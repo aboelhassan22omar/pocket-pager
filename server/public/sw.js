@@ -1,4 +1,4 @@
-// Smart Pager service worker: ONE notification per order (tag order-<id>).
+// Pocket Pager service worker: ONE notification per order (tag order-<id>).
 // preparing -> silent, ready -> sound + vibration, closed -> notification removed.
 
 const CLOSED = ['picked', 'expired', 'cancelled'];

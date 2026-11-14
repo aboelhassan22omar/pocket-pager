@@ -24,7 +24,7 @@ export function summaryText(report, brand, config) {
   for (const b of report.branches) {
     lines.push(`${b.name}: ${b.totals.orders} طلب، متأخر ${b.totals.latePct}%، وقت التحضير ${minutes(b.totals.prepMedianS)}، الاستلام ${minutes(b.totals.waitMedianS)}`);
   }
-  lines.push('', `التفاصيل: ${config.publicUrl}/brand/${brand.id}`, '', 'Smart Pager by AUREXIS');
+  lines.push('', `التفاصيل: ${config.publicUrl}/brand/${brand.id}`, '', 'Pocket Pager by AUREXIS');
   return lines.join('\n');
 }
 
@@ -50,7 +50,7 @@ export async function runWeeklySummaries(deps, { now = Date.now(), send = sendMa
         now,
       });
       try {
-        await send(smtp, { to, subject: `Smart Pager: ملخص الأسبوع لـ ${brand.name}`, text: summaryText(report, brand, config) });
+        await send(smtp, { to, subject: `Pocket Pager: ملخص الأسبوع لـ ${brand.name}`, text: summaryText(report, brand, config) });
         sent++;
       } catch (err) {
         log?.warn({ brand: brand.id, err: err.message }, 'weekly summary email failed');

@@ -1,4 +1,4 @@
-# Smart Pager: removes the receipt QR agent. The receipt printer goes back to its own port,
+# Pocket Pager: removes the receipt QR agent. The receipt printer goes back to its own port,
 # exactly as it was before the install.
 
 $ErrorActionPreference = 'Stop'
@@ -12,7 +12,7 @@ if (-not $me.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
 
 $Dir = Join-Path $env:ProgramData 'SmartPagerPrint'
 $ConfigFile = Join-Path $Dir 'config.json'
-if (-not (Test-Path $ConfigFile)) { Write-Host 'Smart Pager print agent is not installed here.'; return }
+if (-not (Test-Path $ConfigFile)) { Write-Host 'Pocket Pager print agent is not installed here.'; return }
 $cfg = Get-Content $ConfigFile -Raw | ConvertFrom-Json
 
 Set-Printer -Name $cfg.printer -PortName $cfg.originalPort

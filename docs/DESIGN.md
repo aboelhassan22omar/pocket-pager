@@ -1,4 +1,4 @@
-# Smart Pager (by Aurexis) — Design
+# Pocket Pager (by Aurexis) — Design
 
 A no-install pager replacement. The customer scans a QR code at the cashier, gets an order number in the browser, and the phone rings when the order is ready. Staff run everything from a "bar" page.
 

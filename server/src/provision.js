@@ -1,6 +1,7 @@
 import { pinFields, PIN_RE } from './auth.js';
 import { HttpError } from './errors.js';
 import { DAY_MS } from './plans.js';
+import { isDemo } from './demo.js';
 import { QR_MODES, SHOP_ID_RE } from './store.js';
 import { isTimeZone } from './util.js';
 
@@ -21,6 +22,8 @@ function checkId(value, field) {
 
 export function provisionBrand({ control }, { id, name }) {
   checkId(id, 'id');
+  // Taken by the demo café and its visitors' own cafés.
+  if (isDemo(id)) throw bad('id', 'المعرّف ده محجوز للديمو، اختار غيره');
   const brandName = cleanName(name);
   if (control.getBrand(id)) throw new HttpError(409, 'فيه براند بنفس المعرّف ده', { field: 'id' });
   return control.createBrand({ id, name: brandName });

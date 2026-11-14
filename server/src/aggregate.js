@@ -7,7 +7,7 @@ import { median, rollupBranch, summarize } from './rollups.js';
 import { branchTz, businessDayStart, dayIn, dayStartIn, localSlot, startOfDayIn } from './util.js';
 import { screenAlert } from './alerts.js';
 import { staleDevices } from './apps.js';
-import { DEMO_ID } from './demo.js';
+import { isDemo, isSandbox, sandboxCount } from './demo.js';
 import { unseal } from './vault.js';
 import { logoUrl } from './views.js';
 
@@ -125,8 +125,9 @@ export function brandOverview(deps, brandId, now = Date.now()) {
  */
 export function superOverview(deps, now = Date.now()) {
   const secret = deps.config.cookieSecret;
-  const byBrand = new Map(deps.control.listBrands().map((b) => [b.id, {
-    id: b.id, name: b.name, demo: b.id === DEMO_ID, deletedAt: b.deleted_at ?? null, appEnabled: Boolean(b.app_password_hash), owners: [], branches: [],
+  // The demo's visitor cafés stay off the list (live.demo counts them).
+  const byBrand = new Map(deps.control.listBrands().filter((b) => !isSandbox(b.id)).map((b) => [b.id, {
+    id: b.id, name: b.name, demo: isDemo(b.id), deletedAt: b.deleted_at ?? null, appEnabled: Boolean(b.app_password_hash), owners: [], branches: [],
   }]));
   const apps = Object.assign({}, ...[...byBrand.keys()].map((id) => deviceCounts(deps, id)));
   for (const branch of deps.control.listBranches()) {
@@ -155,7 +156,7 @@ export function superOverview(deps, now = Date.now()) {
 function liveNow({ control, screens, config }, apps) {
   const live = { bar: 0, qr: 0, branches: 0, customers: 0, appsOnline: 0 };
   for (const branch of control.listBranches()) {
-    if (branch.deleted_at || branch.id === DEMO_ID) continue;
+    if (branch.deleted_at || isDemo(branch.id)) continue;
     const kinds = screens.kinds(branch.id);
     live.bar += kinds.bar;
     live.qr += kinds.qr;
@@ -165,7 +166,8 @@ function liveNow({ control, screens, config }, apps) {
   }
   live.demo = {
     open: screens.demoPages(),
-    customers: screens.customers(DEMO_ID),
+    customers: control.listBranches().filter((b) => isDemo(b.id)).reduce((n, b) => n + screens.customers(b.id), 0),
+    cafes: sandboxCount(control),
     ...control.demoVisits(dayIn(config.tz)),
   };
   return live;

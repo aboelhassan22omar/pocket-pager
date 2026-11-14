@@ -407,7 +407,7 @@ function renderLive() {
       ${sub ? `<p class="live-sub">${sub}</p>` : ''}
     </div>`;
   $('live').innerHTML = `
-    ${tile(demo.open, 'فاتحين لينك الديمو', `النهارده ${num(demo.today.visits)} زيارة من ${num(demo.today.visitors)} شخص. من الأول ${num(demo.total.visitors)} شخص`)}
+    ${tile(demo.open, 'فاتحين لينك الديمو', `النهارده ${num(demo.today.visits)} زيارة من ${num(demo.today.visitors)} شخص. من الأول ${num(demo.total.visitors)} شخص. كافيهات تجربة شغالة: ${num(demo.cafes ?? 0)}`)}
     ${tile(live.bar, 'أجهزة فاتحة الكاشير', live.bar ? `في ${num(live.branches)} فرع` : 'مفيش فرع فاتح دلوقتي')}
     ${tile(live.qr, 'شاشات الكود مفتوحة')}
     ${tile(live.appsOnline, 'تطبيقات كاشير شغالة')}

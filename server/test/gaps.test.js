@@ -144,7 +144,8 @@ describe('gaps around numbers and scans', () => {
   test('the demo café keeps its settings locked', async () => {
     const v = client(server.url);
     await v.get('/demo');
-    assert.equal((await v.post('/api/bar/demo/settings', { posOnly: true })).status, 403);
-    assert.equal((await v.post('/api/bar/demo/settings', { dayStartHour: 6 })).status, 403);
+    const { shopId } = (await v.get('/api/demo')).data;
+    assert.equal((await v.post(`/api/bar/${shopId}/settings`, { posOnly: true })).status, 403);
+    assert.equal((await v.post(`/api/bar/${shopId}/settings`, { dayStartHour: 6 })).status, 403);
   });
 });

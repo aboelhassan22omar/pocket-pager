@@ -9,7 +9,7 @@ import { checkPassword, USERNAME_RE } from './routes/super.js';
 import { ensureSecrets } from './secrets.js';
 import { randomId } from './util.js';
 
-const USAGE = `Smart Pager CLI
+const USAGE = `Pocket Pager CLI
 
   node src/cli.js create <id> <name> <pin> [dynamic|static|both]    brand + branch with the same id
   node src/cli.js pin <branch> <newPin>

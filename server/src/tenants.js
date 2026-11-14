@@ -54,9 +54,25 @@ export function createTenants({ dataDir, control, config, cacheSize = 200, log }
     return ctx;
   }
 
+  /** Closes a branch's database and deletes its files (the demo's visitor cafés only). */
+  function drop(branchId, brandId) {
+    const entry = open.get(branchId);
+    if (entry) {
+      open.delete(branchId);
+      entry.db.close();
+    }
+    fs.rmSync(path.join(dataDir, 'tenants', brandId, branchId), { recursive: true, force: true });
+    try {
+      fs.rmdirSync(path.join(dataDir, 'tenants', brandId));
+    } catch {
+      /* other branches still there */
+    }
+  }
+
   return {
     get,
     resolve,
+    drop,
     openCount: () => open.size,
     closeAll() {
       for (const entry of open.values()) entry.db.close();
