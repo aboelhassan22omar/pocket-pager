@@ -321,6 +321,8 @@ describe('service worker', () => {
     assert.equal(options.silent, false);
     assert.ok(Array.isArray(options.vibrate) && options.vibrate.length > 0);
     assert.match(title, /7/);
+    // Posted anew (the quiet one closed first), so Android sounds it.
+    assert.deepEqual(sw.closed, ['order-abc123']);
   });
 
   test('picked / expired: the notification is closed', async () => {
@@ -331,6 +333,77 @@ describe('service worker', () => {
       assert.equal(sw.shown.length, 1);
       assert.deepEqual(sw.closed, ['order-abc123']);
     }
+  });
+});
+
+describe('locked Android phone: the page held awake', () => {
+  test('an inaudible looping WAV of 10 s, the order on the lock screen, all gone once closed', async () => {
+    const played = [];
+    class FakeAudio {
+      constructor(src) {
+        this.src = src;
+        this.attrs = {};
+      }
+      setAttribute(k, v) {
+        this.attrs[k] = v;
+      }
+      removeAttribute() {
+        this.src = '';
+      }
+      play() {
+        played.push(this);
+        this.paused = false;
+        return Promise.resolve();
+      }
+      pause() {
+        this.paused = true;
+      }
+      load() {}
+    }
+    const blobs = new Map();
+    const session = { metadata: null };
+    globalThis.Audio = FakeAudio;
+    globalThis.MediaMetadata = class { constructor(m) { Object.assign(this, m); } };
+    const realCreate = URL.createObjectURL;
+    URL.createObjectURL = (blob) => {
+      blobs.set('blob:x', blob);
+      return 'blob:x';
+    };
+    Object.defineProperty(globalThis, 'navigator', { value: { mediaSession: session }, configurable: true });
+    try {
+      const lock = await import('../public/js/lockscreen.js');
+      assert.equal(lock.holdOnLockScreen(), true);
+      lock.holdOnLockScreen();
+      assert.equal(played.length, 2);
+      assert.equal(played[0], played[1], 'one track, played again, never two');
+      assert.equal(played[0].loop, true);
+      const wav = new DataView(await blobs.get('blob:x').arrayBuffer());
+      const rate = wav.getUint32(24, true);
+      const bytes = wav.getUint32(40, true);
+      assert.equal(bytes / 2 / rate, 10);
+      let peak = 0;
+      for (let i = 44; i < 44 + bytes; i += 2) peak = Math.max(peak, Math.abs(wav.getInt16(i, true)));
+      assert.ok(peak > 0 && peak <= 64, `quiet but not silent (peak ${peak})`);
+
+      lock.showOnLockScreen({ title: 'طلبك رقم 3 جاهز', text: 'اتفضل', shopName: 'Café' });
+      assert.equal(session.metadata.title, 'طلبك رقم 3 جاهز');
+      lock.releaseLockScreen();
+      assert.equal(played[0].paused, true);
+      assert.equal(session.metadata, null);
+    } finally {
+      URL.createObjectURL = realCreate;
+      delete globalThis.Audio;
+      delete globalThis.MediaMetadata;
+      delete globalThis.navigator;
+    }
+  });
+
+  test('the customer page holds it on Android and lets go when the order closes; CSP lets the track play', () => {
+    const js = read('public/js/customer.js');
+    assert.match(js, /holdForLock\(\);\n\s*document\.addEventListener\('pointerdown', holdForLock/);
+    assert.match(js, /releaseAwake\(\);\n\s*releaseLockScreen\(\);/);
+    assert.match(js, /if \(!isAndroid\(\)/);
+    assert.match(read('src/app.js'), /media-src 'self' blob:/);
   });
 });
 

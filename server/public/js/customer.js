@@ -1,6 +1,7 @@
 import { Chime } from './chime.js';
 import { applyTheme } from './color.js';
 import { icons } from './icons.js';
+import { holdOnLockScreen, releaseLockScreen, showOnLockScreen } from './lockscreen.js';
 import { loyaltyHtml } from './loyalty-card.js';
 import { aheadText, etaText } from './queue-text.js';
 import { applyTexts, setTexts, t } from './texts.js';
@@ -169,6 +170,23 @@ function render() {
 
   if (order.status === 'ready') showReady();
   else hideReady();
+  renderLockScreen();
+}
+
+// Android, phone locked: the order on the lock screen, and the page kept running to ring.
+function renderLockScreen() {
+  const ready = order.status === 'ready';
+  showOnLockScreen({
+    title: ready ? `طلبك رقم ${label(order)} جاهز` : `طلبك رقم ${label(order)}`,
+    text: order.message,
+    shopName: order.shopName,
+    artwork: shop?.logoUrl,
+  });
+}
+
+function holdForLock() {
+  if (!isAndroid() || !order || CLOSED.includes(order.status)) return;
+  if (holdOnLockScreen()) renderLockScreen();
 }
 
 const deviceHeaders = () => {
@@ -326,6 +344,7 @@ function apply(next) {
     stopPolling();
     setOnline(true);
     releaseAwake();
+    releaseLockScreen();
   }
 }
 
@@ -454,6 +473,7 @@ function onEnable() {
   chime.unlock();
   chime.play('soft');
   keepAwake();
+  holdForLock();
   button.disabled = true;
   button.textContent = t('enable_working');
 
@@ -730,6 +750,10 @@ async function boot() {
 
   $('enable').addEventListener('click', onEnable);
   autoSubscribe();
+  // Android: hold the page for the locked phone now if the browser lets it (a tap earlier on
+  // this page, e.g. picking the number), else at the first tap.
+  holdForLock();
+  document.addEventListener('pointerdown', holdForLock, { once: true });
   setInterval(() => {
     if (!order) return;
     $('card-when').textContent = elapsedLabel(order.createdAt);
