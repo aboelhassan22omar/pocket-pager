@@ -3,7 +3,7 @@ import { watchAppUpdates } from './app-update.js';
 import { Chime, DEFAULT_RING, RING_TONES } from './chime.js';
 import { applyTheme } from './color.js';
 import { appInviteText, branchCardHtml, devicesHtml, renewalHtml, renewalInfo } from './dashboard.js';
-import { openForm } from './forms.js';
+import { filePickHtml, openForm } from './forms.js';
 import { icons } from './icons.js';
 import { TEXT_DEFAULTS, TEXT_GROUPS, TEXT_MAX } from './texts.js';
 import { toast } from './staff.js';
@@ -246,7 +246,7 @@ function openRing() {
           <button class="btn btn-sm ring-play" type="button" data-play="custom" aria-label="اسمع الصوت الخاص" ${ring.url ? '' : 'hidden'} id="ring-custom-play">▶</button>
         </label>
         <div class="ring-upload">
-          <input class="input" type="file" id="ring-file" accept="audio/mpeg,audio/wav,audio/ogg,audio/mp4,audio/x-m4a,.mp3,.wav,.ogg,.m4a">
+          ${filePickHtml({ id: 'ring-file', accept: 'audio/mpeg,audio/wav,audio/ogg,audio/mp4,audio/x-m4a,.mp3,.wav,.ogg,.m4a', text: 'ارفع صوت من عندك' })}
           <p class="muted small">MP3 أو WAV أو OGG أو M4A، أقل من 600 كيلوبايت. أول 6 ثواني بس بتترن.</p>
         </div>
       </div>
