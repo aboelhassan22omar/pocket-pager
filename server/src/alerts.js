@@ -1,4 +1,4 @@
-import { DEMO_ID } from './demo.js';
+import { isDemo } from './demo.js';
 import { sendMail, smtpConfig } from './mail.js';
 import { effectivePlan } from './plans.js';
 import { branchTz, businessDay, localSlot } from './util.js';
@@ -34,7 +34,7 @@ export function usuallyBusy(ctx, tz, now = Date.now()) {
 
 /** { closedMinutes } when the branch's cashier screen is closed in its usual hours, else null. */
 export function screenAlert({ screens, config, tenants }, branch, now = Date.now()) {
-  if (branch.id === DEMO_ID || branch.deleted_at || effectivePlan(branch, now).status === 'suspended') return null;
+  if (isDemo(branch.id) || branch.deleted_at || effectivePlan(branch, now).status === 'suspended') return null;
   const since = screens.barClosedSince(branch.id);
   if (since == null || now - since < CLOSED_AFTER_MS) return null;
   const ctx = tenants.get(branch.id);

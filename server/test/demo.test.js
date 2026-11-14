@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
 import { hashPin } from '../src/auth.js';
+import { purgeSandboxes } from '../src/demo.js';
 import { client, sse, startServer } from './helpers.js';
 
 const SUPER_PASSWORD = 'super-secret-pass';
 
-describe('demo café (/demo)', () => {
+describe('demo cafés (/demo)', () => {
   let server;
   let su;
 
@@ -16,18 +17,28 @@ describe('demo café (/demo)', () => {
   });
   after(() => server?.stop());
 
-  test('one link signs the visitor in as the cashier and the owner of the demo café', async () => {
+  const cafeOf = async (v) => {
+    await v.get('/demo');
+    return (await v.get('/api/demo')).data;
+  };
+  const cookieOf = (v) => [...v.jar].map(([k, val]) => `${k}=${val}`).join('; ');
+
+  test('one link signs the visitor in as the cashier and the owner of their own café', async () => {
     const v = client(server.url);
     const page = await v.get('/demo');
     assert.equal(page.status, 200);
     assert.match(page.data, /كافيه الديمو/);
+    assert.match(page.data, /Pocket Pager/);
+    assert.doesNotMatch(page.data, /Smart Pager/);
 
-    const info = await v.get('/api/demo');
-    assert.equal(info.data.shopId, 'demo');
-    const state = await v.get('/api/bar/demo/state');
+    const info = (await v.get('/api/demo')).data;
+    assert.match(info.shopId, /^dm-[a-z0-9]{12}$/, 'a café of their own');
+    assert.equal(info.theme, null, 'the default colors');
+    const id = info.shopId;
+    const state = await v.get(`/api/bar/${id}/state`);
     assert.equal(state.status, 200, 'cashier session from the link');
     assert.equal(state.data.plan.status, 'active', 'never runs out');
-    const overview = await v.get('/api/brand/demo/overview');
+    const overview = await v.get(`/api/brand/${id}/overview`);
     assert.equal(overview.status, 200, 'owner session from the link');
     assert.equal(overview.data.demo, true);
     assert.equal(overview.data.branches.length, 1);
@@ -35,37 +46,62 @@ describe('demo café (/demo)', () => {
     // Two weeks of sample history for the owner's dashboard, nothing open on the cashier.
     const to = new Date().toISOString().slice(0, 10);
     const from = new Date(Date.now() - 14 * 86_400_000).toISOString().slice(0, 10);
-    const report = await v.get(`/api/brand/demo/analytics?from=${from}&to=${to}`);
+    const report = await v.get(`/api/brand/${id}/analytics?from=${from}&to=${to}`);
     assert.equal(report.status, 200);
     assert.ok(report.data.total.orders > 300, `sample orders: ${report.data.total.orders}`);
     assert.ok(report.data.feedback.count > 30, 'sample ratings');
     assert.equal(state.data.orders.length, 0);
   });
 
-  test('the customer link from the page gets a number the cashier can ring', async () => {
+  test('coming back keeps the same café', async () => {
     const v = client(server.url);
-    await v.get('/demo');
-    const { customerPath } = (await v.get('/api/demo')).data;
-    const k = new URL(customerPath, server.url).searchParams.get('k');
-    const customer = client(server.url);
-    const order = await customer.post('/api/b/demo/claim', { k });
-    assert.equal(order.status, 200);
-    const ready = await v.post(`/api/bar/demo/orders/${order.data.id}/advance`);
-    assert.equal(ready.data.status, 'ready');
-    const qr = await v.get('/api/demo/qr.svg');
+    const first = await cafeOf(v);
+    const again = await cafeOf(v);
+    assert.equal(again.shopId, first.shopId);
+  });
+
+  test('two visitors at once never meet: own numbers, own orders, own rings', async () => {
+    const a = client(server.url);
+    const b = client(server.url);
+    const ca = await cafeOf(a);
+    const cb = await cafeOf(b);
+    assert.notEqual(ca.shopId, cb.shopId);
+    const claim = (info) => {
+      const k = new URL(info.customerPath, server.url).searchParams.get('k');
+      return client(server.url).post(`/api/b/${info.shopId}/claim`, { k });
+    };
+    const oa = (await claim(ca)).data;
+    const ob = (await claim(cb)).data;
+    assert.equal(oa.number, 1);
+    assert.equal(ob.number, 1, 'each count starts at 1');
+    const stream = await sse(`${server.url}/api/bar/${cb.shopId}/events`, { cookie: cookieOf(b) });
+    await stream.next('hello');
+    await claim(ca);
+    await assert.rejects(stream.next('order', () => true, 600), 'B hears nothing of A');
+    stream.close();
+    assert.equal((await b.get(`/api/bar/${cb.shopId}/state`)).data.orders.length, 1);
+    assert.equal((await a.get(`/api/bar/${cb.shopId}/state`)).status, 401, "A can't open B's cashier screen");
+    assert.equal((await a.post(`/api/bar/${ca.shopId}/orders/${oa.id}/advance`)).data.status, 'ready');
+    const qr = await a.get('/api/demo/qr.svg');
     assert.match(qr.data, /<svg/);
   });
 
-  test('visitors cannot change the shared café', async () => {
+  test("visitors cannot change their café's settings", async () => {
     const v = client(server.url);
-    await v.get('/demo');
-    const bar = await v.post('/api/bar/demo/settings', { readyMessage: 'تم' });
-    assert.equal(bar.status, 403);
-    const pin = await v.post('/api/bar/demo/settings', { currentPin: '000000', newPin: '1234' });
-    assert.equal(pin.status, 403);
-    const owner = await v.post('/api/brand/demo/branches/demo/settings', { name: 'اسم تاني' });
-    assert.equal(owner.status, 403);
-    assert.equal((await v.get('/api/brand/demo/overview')).data.branches[0].name, 'كافيه الديمو');
+    const { shopId: id } = await cafeOf(v);
+    assert.equal((await v.post(`/api/bar/${id}/settings`, { readyMessage: 'تم' })).status, 403);
+    assert.equal((await v.post(`/api/bar/${id}/settings`, { currentPin: '000000', newPin: '1234' })).status, 403);
+    assert.equal((await v.post(`/api/brand/${id}/branches/${id}/settings`, { name: 'اسم تاني' })).status, 403);
+    assert.equal((await v.get(`/api/brand/${id}/overview`)).data.branches[0].name, 'كافيه الديمو');
+  });
+
+  test("the visitors' cafés stay off the super's brand list; a brand id can't take the demo prefix", async () => {
+    const v = client(server.url);
+    const { shopId } = await cafeOf(v);
+    const overview = (await su.get('/api/super/overview')).data;
+    assert.ok(!overview.brands.some((b) => b.id === shopId));
+    assert.ok(overview.live.demo.cafes >= 1);
+    assert.equal((await su.post('/api/super/brands', { id: 'dm-mine', name: 'x' })).status, 400);
   });
 
   test('the super sees how many have the demo open now, and visits per day', async () => {
@@ -89,24 +125,44 @@ describe('demo café (/demo)', () => {
     }
   });
 
-  test('the super sees cashier and QR screens open per branch', async () => {
+  test("the demo's own screens are visitors, not cafés: they stay out of the super's totals", async () => {
     const v = client(server.url);
-    await v.get('/demo');
-    const cookie = [...v.jar].map(([k, val]) => `${k}=${val}`).join('; ');
-    const bar = await sse(`${server.url}/api/bar/demo/events`, { cookie });
-    const qr = await sse(`${server.url}/api/bar/demo/events?screen=qr`, { cookie });
+    const { shopId: id } = await cafeOf(v);
+    const bar = await sse(`${server.url}/api/bar/${id}/events`, { cookie: cookieOf(v) });
+    const qr = await sse(`${server.url}/api/bar/${id}/events?screen=qr`, { cookie: cookieOf(v) });
     try {
       await bar.next('hello');
       await qr.next('hello');
+      const own = (await v.get(`/api/brand/${id}/overview`)).data.branches[0];
+      assert.deepEqual(own.screenKinds, { bar: 1, qr: 1 });
       const overview = (await su.get('/api/super/overview')).data;
-      const demo = overview.brands.find((b) => b.id === 'demo').branches[0];
-      assert.deepEqual(demo.screenKinds, { bar: 1, qr: 1 });
-      // The demo's own screens are visitors, not cafés: they stay out of the totals.
       assert.equal(overview.live.bar, 0);
       assert.equal(overview.live.qr, 0);
     } finally {
       bar.close();
       qr.close();
     }
+  });
+});
+
+describe('removing idle demo cafés', () => {
+  test('a café unused for a day goes, a fresh one stays, real brands are never touched', () => {
+    const now = Date.now();
+    const branches = [
+      { id: 'dm-aaaaaaaaaaaa', created_at: now - 3 * 86_400_000, last_activity_at: now - 25 * 3600_000 },
+      { id: 'dm-bbbbbbbbbbbb', created_at: now - 3 * 86_400_000, last_activity_at: now - 3600_000 },
+      { id: 'dm-cccccccccccc', created_at: now - 2 * 3600_000, last_activity_at: null },
+      { id: 'cafe-main', created_at: now - 300 * 86_400_000, last_activity_at: now - 200 * 86_400_000 },
+      { id: 'demo', created_at: now - 300 * 86_400_000, last_activity_at: null },
+    ];
+    const purged = [];
+    const dropped = [];
+    const count = purgeSandboxes({
+      control: { listBranches: () => branches, purgeBrand: (id) => purged.push(id) },
+      tenants: { drop: (id) => dropped.push(id) },
+    }, now);
+    assert.equal(count, 1);
+    assert.deepEqual(purged, ['dm-aaaaaaaaaaaa']);
+    assert.deepEqual(dropped, ['dm-aaaaaaaaaaaa']);
   });
 });

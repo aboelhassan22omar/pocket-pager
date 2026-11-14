@@ -115,7 +115,8 @@ describe('the count: + and − on the cashier screen', () => {
   test('the demo café has + and − too', async () => {
     const v = client(server.url);
     await v.get('/demo');
-    assert.equal((await v.post('/api/bar/demo/counter', { delta: 1 })).status, 200);
-    assert.equal((await v.post('/api/bar/demo/counter', { delta: -1 })).status, 200);
+    const { shopId } = (await v.get('/api/demo')).data;
+    assert.equal((await v.post(`/api/bar/${shopId}/counter`, { delta: 1 })).status, 200);
+    assert.equal((await v.post(`/api/bar/${shopId}/counter`, { delta: -1 })).status, 200);
   });
 });

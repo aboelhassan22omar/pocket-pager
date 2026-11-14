@@ -522,6 +522,28 @@ export class ControlStore {
     };
   }
 
+  /**
+   * Removes a brand and everything of it from this database: its branches, owners, payments,
+   * devices. Only for the demo's visitor cafés (real brands go to the trash instead).
+   */
+  purgeBrand(id) {
+    this.db.exec('BEGIN');
+    try {
+      for (const sql of [
+        'DELETE FROM device_errors WHERE brand_id = ?',
+        'DELETE FROM devices WHERE brand_id = ?',
+        'DELETE FROM payments WHERE branch_id IN (SELECT id FROM branches WHERE brand_id = ?)',
+        'DELETE FROM owners WHERE brand_id = ?',
+        'DELETE FROM branches WHERE brand_id = ?',
+        'DELETE FROM brands WHERE id = ?',
+      ]) this.db.prepare(sql).run(id);
+      this.db.exec('COMMIT');
+    } catch (err) {
+      this.db.exec('ROLLBACK');
+      throw err;
+    }
+  }
+
   touch(id, at = Date.now()) {
     this.sql.touch.run(at, id);
   }

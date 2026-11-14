@@ -2,73 +2,101 @@ import crypto from 'node:crypto';
 import { passwordFields, pinFields } from './auth.js';
 import { dayIn, startOfDayIn } from './util.js';
 
-// The public demo café (/demo): one brand with one branch that every visitor of the ad link
-// shares. It is created on the first visit, never expires, and its settings can't be changed
-// from the demo (see demoLocked). Its owner dashboard always has two weeks of sample orders.
+// The public demo café (/demo). Every visitor of the ad link gets a café of their own (a
+// "sandbox": its own brand, branch and owner, id dm-<12>), so two people trying it at the same
+// time never see each other's numbers, orders or rings. It is created on the first visit, kept
+// by a cookie, has two weeks of sample orders for the owner dashboard, can't be reconfigured
+// (see DEMO_LOCKED), and is removed a day after its visitor last used it. It looks like any
+// new branch: the default colors. The old shared café (id "demo") is left as it was.
 
 export const DEMO_ID = 'demo';
 export const DEMO_NAME = 'كافيه الديمو';
-const DEMO_OWNER = 'demo.visitor';
-// Shows visitors what a branch looks like in its own color.
-const DEMO_COLOR = '#12a0a0';
+export const DEMO_PREFIX = 'dm-';
+const SANDBOX_RE = /^dm-[a-z0-9]{12}$/;
+// Removed this long after its visitor last opened it or took a number.
+export const SANDBOX_IDLE_MS = 24 * 3600 * 1000;
+// More than this at once: the oldest go first (a flood of visits can't fill the disk).
+const SANDBOX_MAX = 400;
 const SEED_DAYS = 14;
 const SEED_PREFIX = 'seed-';
 export const DEMO_LOCKED = 'دي نسخة الديمو: الإعدادات مقفولة هنا، وبتتغيّر عادي في النسخة بتاعتك';
 
-export const isDemo = (id) => id === DEMO_ID;
+/** The shared demo café or a visitor's own one: settings locked, never billed or alerted. */
+export const isDemo = (id) => typeof id === 'string' && (id === DEMO_ID || id.startsWith(DEMO_PREFIX));
+export const isSandbox = (id) => typeof id === 'string' && SANDBOX_RE.test(id);
 
-let creating = null;
+function newSandboxId() {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let id = DEMO_PREFIX;
+  for (let i = 0; i < 12; i++) id += chars[crypto.randomInt(chars.length)];
+  return id;
+}
 
-/** The demo branch context and its owner, created on first use. */
-export async function ensureDemo(deps) {
-  const { control, tenants, config } = deps;
-  const ready = () => {
-    const ctx = tenants.get(DEMO_ID);
-    const first = control.ownersOfBrand(DEMO_ID)[0];
-    const owner = first && control.getOwner(first.id); // the full row (session version)
-    return ctx?.store.getShop() && owner ? { ctx, owner } : null;
-  };
-  const existing = ready();
-  if (existing) {
-    if (!existing.ctx.store.getShop().theme_version) existing.ctx.store.updateShop({ accent_color: DEMO_COLOR, theme_version: 1 });
-    return existing;
+function ready({ control, tenants }, id) {
+  const ctx = tenants.get(id);
+  const first = control.ownersOfBrand(id)[0];
+  const owner = first && control.getOwner(first.id); // the full row (session version)
+  return ctx?.store.getShop() && owner ? { id, ctx, owner } : null;
+}
+
+/** The visitor's own café (`wanted`, from their cookie), or a new one. */
+export async function ensureDemo(deps, wanted = null) {
+  if (isSandbox(wanted)) {
+    const found = ready(deps, wanted);
+    if (found) {
+      deps.control.touch(wanted);
+      return found;
+    }
   }
-  creating ??= create(deps).finally(() => {
-    creating = null;
+  const id = newSandboxId();
+  await create(deps, id);
+  topUpDemo(deps, Date.now(), id);
+  deps.control.touch(id);
+  purgeSandboxes(deps);
+  return ready(deps, id);
+}
+
+async function create({ control, tenants, config }, id) {
+  control.createBrand({ id, name: DEMO_NAME });
+  // No trial and no paid_until: active with no end date.
+  control.createBranch({ id, brandId: id, name: DEMO_NAME, area: 'تجربة' });
+  for (const feature of ['review', 'loyalty', 'promo']) control.setFeature(id, feature, true);
+  const ctx = tenants.get(id);
+  const pin = String(crypto.randomInt(100000, 1000000));
+  const cols = await pinFields(config.cookieSecret, pin);
+  ctx.store.initSettings({ pinHash: cols.pin_hash, pinSealed: cols.pin_sealed, qrMode: 'both' });
+  ctx.store.updateShop({
+    theme_version: 1, // the default colors, and no color read from a logo
+    expire_hours: 1,
+    preparing_message: 'طلبك بيتحضّر دلوقتي. هنرن عليك أول ما يجهز',
+    ready_message: 'طلبك جاهز، اتفضّل استلمه من الكاشير',
+    loyalty_every: 5,
+    loyalty_reward_text: 'مشروب ببلاش',
+    promo_text: 'خصم ١٠٪ على أي حلو مع القهوة النهارده',
   });
-  await creating;
-  topUpDemo({ tenants, config });
-  return ready();
+  const fields = await passwordFields(config.cookieSecret, crypto.randomBytes(9).toString('base64url'));
+  control.createOwner({ brandId: id, username: id, ...fields });
 }
 
-async function create({ control, tenants, config }) {
-  if (!control.getBrand(DEMO_ID)) control.createBrand({ id: DEMO_ID, name: DEMO_NAME });
-  if (!control.getBranch(DEMO_ID)) {
-    // No trial and no paid_until: active with no end date.
-    control.createBranch({ id: DEMO_ID, brandId: DEMO_ID, name: DEMO_NAME, area: 'تجربة' });
-    for (const feature of ['review', 'loyalty', 'promo']) control.setFeature(DEMO_ID, feature, true);
+/**
+ * Removes the visitors' cafés nobody used for a day, and the oldest beyond SANDBOX_MAX.
+ * Returns how many went.
+ */
+export function purgeSandboxes({ control, tenants }, now = Date.now()) {
+  const sandboxes = control.listBranches()
+    .filter((b) => isSandbox(b.id))
+    .map((b) => ({ id: b.id, last: b.last_activity_at ?? b.created_at }))
+    .sort((a, b) => b.last - a.last);
+  const gone = sandboxes.filter((s, i) => now - s.last > SANDBOX_IDLE_MS || i >= SANDBOX_MAX);
+  for (const s of gone) {
+    tenants.drop(s.id, s.id);
+    control.purgeBrand(s.id);
   }
-  const ctx = tenants.get(DEMO_ID);
-  if (!ctx.store.getShop()) {
-    const pin = String(crypto.randomInt(100000, 1000000));
-    const cols = await pinFields(config.cookieSecret, pin);
-    ctx.store.initSettings({ pinHash: cols.pin_hash, pinSealed: cols.pin_sealed, qrMode: 'both' });
-    ctx.store.updateShop({
-      accent_color: DEMO_COLOR,
-      theme_version: 1,
-      expire_hours: 1,
-      preparing_message: 'طلبك بيتحضّر دلوقتي. هنرن عليك أول ما يجهز',
-      ready_message: 'طلبك جاهز، اتفضّل استلمه من الكاشير',
-      loyalty_every: 5,
-      loyalty_reward_text: 'مشروب ببلاش',
-      promo_text: 'خصم ١٠٪ على أي حلو مع القهوة النهارده',
-    });
-  }
-  if (!control.ownersOfBrand(DEMO_ID).length && !control.ownerByUsername(DEMO_OWNER)) {
-    const fields = await passwordFields(config.cookieSecret, crypto.randomBytes(9).toString('base64url'));
-    control.createOwner({ brandId: DEMO_ID, username: DEMO_OWNER, ...fields });
-  }
+  return gone.length;
 }
+
+/** How many visitors' cafés exist now (the super's demo line). */
+export const sandboxCount = (control) => control.listBranches().filter((b) => isSandbox(b.id)).length;
 
 // ---------------------------------------------------------------------------
 // Sample history: closed orders and ratings for each of the last SEED_DAYS days.
@@ -136,8 +164,8 @@ function seedDay(store, day, dayStart) {
 }
 
 /** Adds the sample history for any of the last SEED_DAYS days that lack it (cheap when done). */
-export function topUpDemo({ tenants, config }, now = Date.now()) {
-  const ctx = tenants.get(DEMO_ID);
+export function topUpDemo({ tenants, config }, now = Date.now(), id = DEMO_ID) {
+  const ctx = tenants.get(id);
   if (!ctx?.store.getShop()) return 0;
   const { db } = ctx.store;
   const has = db.prepare('SELECT 1 FROM orders WHERE id = ?');

@@ -269,11 +269,10 @@ describe('the POS link', () => {
   test('the demo café: the link shows but can not be changed', async () => {
     const v = client(server.url);
     await v.get('/demo');
-    assert.equal((await v.get('/api/bar/demo/pos')).status, 200);
-    assert.equal((await v.post('/api/bar/demo/pos/rotate', {})).status, 403);
     const info = (await v.get('/api/demo')).data;
-    assert.equal(info.theme['--accent'].length, 7, 'the demo wears a color');
-    assert.ok(info.theme['--bg'] !== '#17191d');
+    assert.equal((await v.get(`/api/bar/${info.shopId}/pos`)).status, 200);
+    assert.equal((await v.post(`/api/bar/${info.shopId}/pos/rotate`, {})).status, 403);
+    assert.equal(info.theme, null, 'the demo wears the default colors');
   });
 
   test('a branch color reaches every page data source; choosing the default stays chosen', async () => {

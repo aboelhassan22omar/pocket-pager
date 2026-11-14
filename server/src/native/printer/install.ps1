@@ -1,8 +1,8 @@
-# Smart Pager: the order's QR at the end of every receipt this branch prints.
+# Pocket Pager: the order's QR at the end of every receipt this branch prints.
 # Run once on the cashier PC that prints the receipts (it asks for admin by itself). It finds
-# the receipt printer and puts the Smart Pager agent between it and the POS; the POS keeps
+# the receipt printer and puts the Pocket Pager agent between it and the POS; the POS keeps
 # printing to the same printer name. Running it again updates the agent. To undo: the remove
-# command from the Smart Pager super page.
+# command from the Pocket Pager super page.
 
 $ErrorActionPreference = 'Stop'
 $Server = '__SERVER__'

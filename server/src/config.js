@@ -69,7 +69,7 @@ export function loadConfig(env = process.env) {
         : int(env.SMTP_PORT, 587, 1, 65535) === 465 ? 'implicit' : 'starttls',
       user: str(env.SMTP_USER, ''),
       pass: str(env.SMTP_PASS, ''),
-      from: str(env.SMTP_FROM, 'Smart Pager <no-reply@aurexis.cc>'),
+      from: str(env.SMTP_FROM, 'Pocket Pager <no-reply@aurexis.cc>'),
     },
     backupS3: backupS3(env),
     cookieSecret: str(env.COOKIE_SECRET, ''),

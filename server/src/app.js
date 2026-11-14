@@ -13,7 +13,7 @@ import { createService } from './service.js';
 import { scheduleBackups } from './backup.js';
 import { runWeeklySummaries } from './summary.js';
 import { createPackages } from './native/packages.js';
-import { topUpDemo } from './demo.js';
+import { purgeSandboxes, topUpDemo } from './demo.js';
 import { mailScreenAlerts } from './alerts.js';
 import adminRoutes from './routes/admin.js';
 import appRoutes from './routes/app.js';
@@ -121,6 +121,9 @@ export async function buildApp(config) {
     control.refreshPlanStatuses();
     control.purgeDeviceErrors(Date.now() - 30 * 86_400_000);
     topUpDemo({ tenants, config });
+    // The demo's visitor cafés: gone a day after last use.
+    const purged = purgeSandboxes({ control, tenants });
+    if (purged) app.log.info({ purged }, 'removed idle demo cafés');
   }, 3600_000);
   const rollups = setInterval(() => service.runRollups(), 300_000);
   const alerts = setInterval(() => {

@@ -68,11 +68,11 @@ describe('pages', () => {
 
 describe('cashier app pages (private label)', () => {
   for (const page of ['public/app.html', 'public/setup.html']) {
-    test(`${page}: Arabic RTL, no inline scripts, brand only (no Powered by, no Smart Pager)`, () => {
+    test(`${page}: Arabic RTL, no inline scripts, brand only (no Powered by, no Pocket Pager)`, () => {
       const html = read(page);
       assert.match(html, /<html lang="ar" dir="rtl">/);
       assert.doesNotMatch(html, /<script(?![^>]*\bsrc=)[^>]*>/);
-      assert.doesNotMatch(html, /powered\.js|Smart Pager|Aurexis|AUREXIS/i);
+      assert.doesNotMatch(html, /powered\.js|Smart Pager|Pocket Pager|Aurexis|AUREXIS/i);
     });
   }
 

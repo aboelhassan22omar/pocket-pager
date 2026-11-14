@@ -1,6 +1,6 @@
-# Smart Pager receipt QR agent.
+# Pocket Pager receipt QR agent.
 # The POS prints to its receipt printer as before. Windows hands each print job to this agent
-# (a printer port on 127.0.0.1), which asks the Smart Pager server for the order's QR, adds it
+# (a printer port on 127.0.0.1), which asks the Pocket Pager server for the order's QR, adds it
 # before the paper cut, and sends the job on to the real printer. No answer within 3 seconds,
 # or any error: the receipt prints exactly as it came. Installed by printer.ps1, which runs it
 # as a scheduled task (every minute: a second copy exits at once while this one listens).
