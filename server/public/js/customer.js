@@ -676,6 +676,7 @@ async function boot() {
     return;
   }
   applyTheme(document.documentElement, shop.theme);
+  chime.useRing(shop.ring);
   setTexts(shop.texts);
   applyTexts(document);
   paintLogo($('splash-logo'), 136);

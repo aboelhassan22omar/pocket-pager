@@ -3,6 +3,7 @@ import Fastify from 'fastify';
 import fastifyCookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
 import { buildId } from './build.js';
+import { AUDIO_TYPES, RING_FILE_MAX_BYTES } from './ring.js';
 import { openStorage } from './bootstrap.js';
 import { createBus, createScreens } from './bus.js';
 import { HttpError } from './errors.js';
@@ -62,6 +63,10 @@ export async function buildApp(config) {
   const ctx = { config, control, tenants, bus, screens, notifier, service, packages };
 
   app.addContentTypeParser(LOGO_TYPES, { parseAs: 'buffer', bodyLimit: LOGO_MAX_BYTES }, (_req, body, done) => {
+    done(null, body);
+  });
+  // The brand's own ring (src/ring.js): checked by its bytes, not by this type.
+  app.addContentTypeParser(AUDIO_TYPES, { parseAs: 'buffer', bodyLimit: RING_FILE_MAX_BYTES + 1024 }, (_req, body, done) => {
     done(null, body);
   });
 

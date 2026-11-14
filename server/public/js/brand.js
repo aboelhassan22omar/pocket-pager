@@ -1,5 +1,6 @@
 import { mountAnalytics } from './analytics.js';
 import { watchAppUpdates } from './app-update.js';
+import { Chime, DEFAULT_RING, RING_TONES } from './chime.js';
 import { applyTheme } from './color.js';
 import { appInviteText, branchCardHtml, devicesHtml, renewalHtml, renewalInfo } from './dashboard.js';
 import { openForm } from './forms.js';
@@ -192,6 +193,141 @@ function openTexts() {
       renderTexts();
       toast('اتحفظ، والعملاء هيشوفوه من الطلب الجاي');
     },
+  });
+}
+
+// ---------- the customers' ring: a tone of the library, or the brand's own sound ----------
+
+let ring = { tone: DEFAULT_RING, url: null };
+const preview = new Chime();
+const RING_FILE_MAX = 600 * 1024;
+
+const toneLabel = (id) => RING_TONES.find((t) => t.id === id)?.label ?? RING_TONES[0].label;
+
+function renderRing() {
+  $('ring-body').innerHTML = `
+    <div class="creds texts-card">
+      <p>الصوت اللي موبايل العميل بيرنه لما طلبه يجهز، في كل الفروع.</p>
+      <p class="muted small">دلوقتي: <strong>${ring.url ? 'صوت خاص بيك' : esc(toneLabel(ring.tone))}</strong>${ring.tone === DEFAULT_RING && !ring.url ? ' (الأساسية)' : ''}.
+        رنة الإشعار والشاشة مقفولة بتبقى صوت إشعارات موبايل العميل نفسه.</p>
+      ${data.demo ? '' : '<button class="btn btn-primary" data-act="ring" type="button">اختار الرنة</button>'}
+    </div>`;
+}
+
+async function loadRing() {
+  try {
+    ring = await api(`${base}/ring`);
+  } catch {
+    /* the default */
+  }
+  renderRing();
+}
+
+// The picker: every tone with ▶ to hear it, plus the brand's own file.
+function openRing() {
+  let chosen = ring.url ? 'custom' : ring.tone;
+  let file = null;
+  const backdrop = document.createElement('div');
+  backdrop.className = 'sheet-backdrop';
+  backdrop.innerHTML = `
+    <div class="sheet ring-sheet" role="dialog" aria-modal="true" aria-labelledby="ring-title">
+      <h2 id="ring-title">صوت الرنة</h2>
+      <p class="muted small">دوس ▶ عشان تسمع، واختار اللي يعجبك.</p>
+      <div class="ring-list" role="radiogroup" aria-label="الرنات">
+        ${RING_TONES.map((t) => `
+          <label class="ring-row">
+            <input type="radio" name="ring" value="${esc(t.id)}" ${chosen === t.id ? 'checked' : ''}>
+            <span class="ring-name">${esc(t.label)}${t.id === DEFAULT_RING ? ' <span class="muted small">(الأساسية)</span>' : ''}</span>
+            <button class="btn btn-sm ring-play" type="button" data-play="${esc(t.id)}" aria-label="اسمع ${esc(t.label)}">▶</button>
+          </label>`).join('')}
+        <label class="ring-row">
+          <input type="radio" name="ring" value="custom" ${chosen === 'custom' ? 'checked' : ''} ${ring.url ? '' : 'disabled'} id="ring-custom-radio">
+          <span class="ring-name">صوت خاص بيك</span>
+          <button class="btn btn-sm ring-play" type="button" data-play="custom" aria-label="اسمع الصوت الخاص" ${ring.url ? '' : 'hidden'} id="ring-custom-play">▶</button>
+        </label>
+        <div class="ring-upload">
+          <input class="input" type="file" id="ring-file" accept="audio/mpeg,audio/wav,audio/ogg,audio/mp4,audio/x-m4a,.mp3,.wav,.ogg,.m4a">
+          <p class="muted small">MP3 أو WAV أو OGG أو M4A، أقل من 600 كيلوبايت. أول 6 ثواني بس بتترن.</p>
+        </div>
+      </div>
+      <p class="form-error" id="ring-error" hidden></p>
+      <div class="sheet-actions">
+        <button class="btn btn-primary btn-block" type="button" data-save>احفظ</button>
+        <button class="btn btn-quiet btn-block" type="button" data-close>رجوع</button>
+      </div>
+    </div>`;
+  document.body.append(backdrop);
+  const close = () => {
+    preview.stop();
+    backdrop.remove();
+  };
+  const error = (message) => {
+    const el = backdrop.querySelector('#ring-error');
+    el.textContent = message;
+    el.hidden = !message;
+  };
+
+  backdrop.addEventListener('change', (e) => {
+    if (e.target.name === 'ring') chosen = e.target.value;
+    if (e.target.id !== 'ring-file') return;
+    const picked = e.target.files?.[0] ?? null;
+    error('');
+    if (picked && picked.size > RING_FILE_MAX) {
+      e.target.value = '';
+      error('الملف لازم يكون أقل من 600 كيلوبايت');
+      return;
+    }
+    file = picked;
+    if (!file) return;
+    const radio = backdrop.querySelector('#ring-custom-radio');
+    radio.disabled = false;
+    radio.checked = true;
+    chosen = 'custom';
+    backdrop.querySelector('#ring-custom-play').hidden = false;
+  });
+
+  backdrop.addEventListener('click', async (e) => {
+    if (e.target === backdrop || e.target.closest('[data-close]')) {
+      close();
+      return;
+    }
+    const play = e.target.closest('[data-play]');
+    if (play) {
+      e.preventDefault();
+      preview.unlock();
+      preview.stop();
+      if (play.dataset.play === 'custom' && file) {
+        await preview.useFile(file);
+        if (!preview.customBuffer) {
+          error('الملف ده مش بيشتغل كصوت. جرّب ملف MP3 تاني');
+          return;
+        }
+      } else if (play.dataset.play === 'custom') {
+        preview.useRing({ tone: DEFAULT_RING, url: ring.url });
+        await preview.loadCustom();
+      } else {
+        preview.useRing({ tone: play.dataset.play });
+      }
+      preview.play('ready');
+      return;
+    }
+    if (!e.target.closest('[data-save]')) return;
+    const button = e.target.closest('[data-save]');
+    button.disabled = true;
+    error('');
+    try {
+      if (chosen === 'custom' && file) {
+        ring = await api(`${base}/ring-file`, { method: 'POST', raw: file, contentType: file.type || 'audio/mpeg' });
+      } else if (chosen !== 'custom') {
+        ring = await api(`${base}/ring`, { method: 'POST', body: { tone: chosen } });
+      }
+      renderRing();
+      close();
+      toast('اتحفظ، والعملاء هيسمعوه من الطلب الجاي');
+    } catch (err) {
+      error(err.message);
+      button.disabled = false;
+    }
   });
 }
 
@@ -467,7 +603,7 @@ async function boot() {
   showTab(firstTab());
   addEventListener('hashchange', () => showTab(location.hash.slice(1)));
   render();
-  await Promise.all([loadApp(), loadOwnerApp(), loadTexts()]);
+  await Promise.all([loadApp(), loadOwnerApp(), loadTexts(), loadRing()]);
   mountAnalytics($('analytics'), { base, branches: data.branches });
   $('app-body').addEventListener('click', (e) => {
     const el = e.target.closest('[data-act], [data-copy]');
@@ -477,6 +613,9 @@ async function boot() {
 
   $('texts-body').addEventListener('click', (e) => {
     if (e.target.closest('[data-act="texts"]')) openTexts();
+  });
+  $('ring-body').addEventListener('click', (e) => {
+    if (e.target.closest('[data-act="ring"]')) openRing();
   });
   $('account-body').addEventListener('click', (e) => {
     const el = e.target.closest('[data-act]');

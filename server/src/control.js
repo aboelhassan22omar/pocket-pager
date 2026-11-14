@@ -139,6 +139,10 @@ export const CONTROL_MIGRATIONS = [
   `
   ALTER TABLE brands ADD COLUMN texts TEXT;
   `,
+  // 11: the customers' ring, the brand's choice (JSON { tone, file }; NULL = the default tone).
+  `
+  ALTER TABLE brands ADD COLUMN ring TEXT;
+  `,
 ];
 
 export const branchDbPath = (brandId, branchId) => `tenants/${brandId}/${branchId}/pager.db`;
@@ -359,6 +363,22 @@ export class ControlStore {
   setBrandTexts(brandId, texts) {
     this.db.prepare('UPDATE brands SET texts = ? WHERE id = ?').run(Object.keys(texts).length ? JSON.stringify(texts) : null, brandId);
     return this.brandTexts(brandId);
+  }
+
+  // ---- the customers' ring ----
+
+  /** { tone, file } (file: the brand's own sound, or null), or null for the default. */
+  brandRing(brandId) {
+    try {
+      return JSON.parse(this.db.prepare('SELECT ring FROM brands WHERE id = ?').get(brandId)?.ring || 'null');
+    } catch {
+      return null;
+    }
+  }
+
+  setBrandRing(brandId, ring) {
+    this.db.prepare('UPDATE brands SET ring = ? WHERE id = ?').run(ring ? JSON.stringify(ring) : null, brandId);
+    return this.brandRing(brandId);
   }
 
   // ---- owners ----
