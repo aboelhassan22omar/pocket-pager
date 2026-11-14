@@ -199,6 +199,85 @@ select {
   border-color: var(--danger);
 }
 
+/* File picker in our look (forms.js filePickHtml): the real input lies over it, invisible. */
+.file-pick {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 10px 14px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-control);
+  background: var(--bg);
+  color: var(--text);
+  transition: border-color 160ms var(--ease), background-color 160ms var(--ease);
+}
+
+/* Beats `.field > span` (the field's own small label). */
+.field > .file-pick {
+  color: var(--text);
+  font-size: var(--fs-md);
+}
+
+.file-pick-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.file-pick:hover,
+.file-pick:focus-within {
+  border-color: var(--accent);
+}
+
+.file-pick:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.file-pick.has-file {
+  border-style: solid;
+  border-color: var(--accent);
+}
+
+.file-pick-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--accent);
+}
+
+.file-pick-text {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.file-pick-text strong {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.file-pick-name {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-pick:has(.file-pick-input:disabled) {
+  opacity: 0.6;
+}
+
 .form-error {
   margin: 0;
   color: var(--danger);

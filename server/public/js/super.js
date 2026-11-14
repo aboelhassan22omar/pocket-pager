@@ -726,26 +726,55 @@ async function printerForm(b, path) {
 
 const ICON_SIZES = [432, 256];
 
-/** Square PNG from the logo: background color, logo centered inside the adaptive-icon safe zone. */
-async function renderIcon(file, background, size) {
+/** Where the logo's own pixels are: its transparent margins trimmed off. */
+function opaqueBox(img) {
+  const w = img.naturalWidth;
+  const h = img.naturalHeight;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const g = canvas.getContext('2d', { willReadFrequently: true });
+  g.drawImage(img, 0, 0);
+  const { data } = g.getImageData(0, 0, w, h);
+  let x0 = w;
+  let y0 = h;
+  let x1 = -1;
+  let y1 = -1;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (data[(y * w + x) * 4 + 3] > 8) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+    }
+  }
+  return x1 < 0 ? { x: 0, y: 0, w, h } : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+}
+
+/**
+ * Square PNG that is the logo alone: transparent around it, no background color. Android
+ * crops the edges to the phone's icon shape, so there the logo stays inside the safe zone;
+ * Windows shows the whole square.
+ */
+async function renderIcon(file, size) {
   const url = URL.createObjectURL(file);
   try {
     const img = new Image();
     img.src = url;
     await img.decode();
+    const src = opaqueBox(img);
     const canvas = document.createElement('canvas');
     canvas.width = size;
     canvas.height = size;
     const g = canvas.getContext('2d');
-    g.fillStyle = background;
-    g.fillRect(0, 0, size, size);
-    // Android masks the outer third (circle, squircle); Windows shows the whole square.
-    const box = size * (size === 432 ? 0.56 : 0.78);
-    const scale = Math.min(box / img.naturalWidth, box / img.naturalHeight);
-    const w = img.naturalWidth * scale;
-    const h = img.naturalHeight * scale;
+    const box = size * (size === 432 ? 0.61 : 0.94);
+    const scale = Math.min(box / src.w, box / src.h);
+    const w = src.w * scale;
+    const h = src.h * scale;
     g.imageSmoothingQuality = 'high';
-    g.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+    g.drawImage(img, src.x, src.y, src.w, src.h, (size - w) / 2, (size - h) / 2, w, h);
     return await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
   } finally {
     URL.revokeObjectURL(url);
@@ -862,16 +891,15 @@ async function appSheet(brandId, { focusErrors = false } = {}) {
     } else if (op === 'icon') {
       openForm({
         title: 'أيقونة التطبيق',
-        intro: 'اللوجو بيتحط في نص مربع بلون الخلفية اللي تختاره. الأحسن لوجو PNG بخلفية شفافة.',
+        intro: 'الأيقونة بتبقى اللوجو بس، من غير خلفية. ارفع لوجو PNG بخلفية شفافة؛ لو الصورة JPG بخلفية، الخلفية دي هتظهر في الأيقونة.',
         fields: [
           { name: 'logo', label: 'اللوجو', type: 'file', accept: 'image/png,image/jpeg,image/webp' },
-          { name: 'background', label: 'لون الخلفية', type: 'color', value: '#ffffff', dir: 'ltr' },
         ],
         submit: 'ارفع',
         onSubmit: async (v) => {
           if (!(v.logo instanceof File) || !v.logo.size) throw Object.assign(new Error('اختار صورة اللوجو'), { data: { field: 'logo' } });
           for (const size of ICON_SIZES) {
-            const png = await renderIcon(v.logo, v.background || '#ffffff', size);
+            const png = await renderIcon(v.logo, size);
             await api(`/api/super${base}/app-icon?size=${size}`, { method: 'POST', raw: png, contentType: 'image/png' });
           }
           await reload();

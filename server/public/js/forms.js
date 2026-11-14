@@ -4,7 +4,41 @@
 //         toggle (checkbox: values[name] === 'on') | heading
 // onSubmit(values) may throw an ApiError; its message (and data.field) is shown in the sheet.
 
+import { icons } from './icons.js';
 import { esc } from './util.js';
+
+const NO_FILE = 'لسه ما اخترتش ملف';
+
+const fileSize = (bytes) => (bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} كيلوبايت` : `${(bytes / 1024 / 1024).toFixed(1)} ميجا`);
+
+/**
+ * A file picker in our own look instead of the browser's «Choose File»: a tap (or a drop)
+ * area with the file's name once picked. The real input covers it, invisible, so tapping,
+ * dropping and the keyboard all reach it.
+ */
+export function filePickHtml({ id, name = '', accept = '', text = 'اختار ملف', attrs = '' }) {
+  return `<span class="file-pick">
+      <input class="file-pick-input" type="file" id="${esc(id)}" ${name ? `name="${esc(name)}"` : ''} accept="${esc(accept)}" ${attrs}>
+      <span class="file-pick-icon" aria-hidden="true">${icons.upload(20)}</span>
+      <span class="file-pick-text">
+        <strong>${esc(text)}</strong>
+        <small class="file-pick-name">${NO_FILE}</small>
+      </span>
+    </span>`;
+}
+
+// One listener for every picker on the page: shows the picked file's name and size.
+if (typeof document !== 'undefined') {
+  document.addEventListener('change', (e) => {
+    const input = e.target;
+    if (!input.classList?.contains('file-pick-input')) return;
+    const pick = input.closest('.file-pick');
+    const file = input.files?.[0];
+    pick.classList.toggle('has-file', Boolean(file));
+    // The name in its own <bdi>: a Latin file name doesn't flip the Arabic size around it.
+    pick.querySelector('.file-pick-name').innerHTML = file ? `<bdi>${esc(file.name)}</bdi> · ${fileSize(file.size)}` : NO_FILE;
+  });
+}
 
 // On a phone the keyboard would cover half the sheet before anything is read: focus the
 // sheet itself there, and the first field only with a real keyboard.
@@ -31,7 +65,7 @@ function fieldHtml(f) {
   }
   if (f.type === 'file') {
     return `<label class="field" for="${id}"><span>${esc(f.label)}</span>
-      <input class="input" ${common} type="file" accept="${esc(f.accept ?? '')}">${hint}</label>`;
+      ${filePickHtml({ id, name: f.name, accept: f.accept ?? '', text: f.pick ?? 'اختار صورة', attrs: `${f.required ? 'required' : ''} ${f.disabled ? 'disabled' : ''}` })}${hint}</label>`;
   }
   if (f.type === 'textarea') {
     return `<label class="field" for="${id}"><span>${esc(f.label)}</span>
