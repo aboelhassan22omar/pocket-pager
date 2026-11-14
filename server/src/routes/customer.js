@@ -1,4 +1,5 @@
 import { HttpError } from '../errors.js';
+import { ringView } from '../ring.js';
 import { channels } from '../bus.js';
 import {
   DEVICE_CLAIMS, hashDevice, loyaltyEnabled, loyaltyView, newDeviceToken, readDeviceToken, setDeviceCookie,
@@ -101,6 +102,8 @@ export default async function customerRoutes(app, { config, control, tenants, bu
       ...publicShop(req.ctx.store.getShop(), { today: dayIn(branchTz(req.ctx.branch, config)) }),
       // The brand's own wording of the page (only what it changed; see public/js/texts.js).
       texts: control.brandTexts(req.ctx.branch.brand_id),
+      // The ring the brand chose for its customers.
+      ring: ringView(req.ctx.branch.brand_id, control.brandRing(req.ctx.branch.brand_id)),
     }));
 
     b.post('/claim', async (req, reply) => {

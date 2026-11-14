@@ -354,3 +354,45 @@
   background: var(--surface);
   overflow-wrap: anywhere;
 }
+
+/* ---------- the customers' ring: the picker ---------- */
+
+.ring-list {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0;
+}
+
+.ring-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  cursor: pointer;
+}
+
+.ring-row:has(input:checked) {
+  border-color: var(--accent);
+}
+
+.ring-name {
+  flex: 1;
+}
+
+.ring-play {
+  flex: none;
+  min-width: 44px;
+}
+
+.ring-upload {
+  display: grid;
+  gap: 4px;
+  padding: 6px 2px;
+}
+
+.ring-upload p {
+  margin: 0;
+}

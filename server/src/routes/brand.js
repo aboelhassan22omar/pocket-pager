@@ -2,13 +2,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { verifyPin } from '../auth.js';
 import { analyticsCsv, brandAnalytics, brandOverview } from '../aggregate.js';
-import { appView, ownerAppView } from '../apps.js';
+import { appView, brandAppDir, ownerAppView } from '../apps.js';
+import { DEFAULT_RING } from '../../public/js/chime.js';
 import { cleanTexts } from '../../public/js/texts.js';
 import { cleanEmail, cleanPhone } from '../contact.js';
 import { DEMO_LOCKED, isDemo } from '../demo.js';
 import { HttpError } from '../errors.js';
 import { LOYALTY_EVERY, REWARD_TEXT_MAX } from '../loyalty.js';
 import { createRateLimiter } from '../ratelimit.js';
+import {
+  AUDIO_MIME, AUDIO_TYPES, clearRingFiles, RING_FILE_MAX_BYTES, RING_FILE_RE, RING_IDS, ringView, sniffAudio,
+} from '../ring.js';
+import { SHOP_ID_RE } from '../store.js';
 import { OWNER_COOKIE, requireJson, requireOwner, setOwnerSession } from '../sessions.js';
 import { FEATURES } from '../plans.js';
 import { parsePlaceId } from '../upgrades.js';
@@ -91,11 +96,26 @@ export default async function brandRoutes(app, deps) {
     return { ok: true };
   });
 
+  // The brand's own ring sound, for its customers' pages (public, like a logo).
+  app.get('/media/brand/:brand/:file', async (req, reply) => {
+    const { brand, file } = req.params;
+    if (!SHOP_ID_RE.test(brand) || !RING_FILE_RE.test(file) || !control.getBrand(brand)) throw new HttpError(404, 'مش موجود');
+    let data;
+    try {
+      data = await fs.promises.readFile(path.join(brandAppDir(config, brand), file));
+    } catch {
+      throw new HttpError(404, 'مش موجود');
+    }
+    reply.type(AUDIO_MIME[path.extname(file).slice(1)]).header('cache-control', 'public, max-age=31536000, immutable');
+    return data;
+  });
+
   await app.register(async (b) => {
     b.addHook('onRequest', async (req) => {
       req.owner = requireOwner(req, deps, req.params.brand);
       if (req.method !== 'GET' && isDemo(req.params.brand)) throw new HttpError(403, DEMO_LOCKED);
-      requireJson(req, req.url.split('?')[0].endsWith('/promo-image') ? IMAGE_TYPES : []);
+      const url = req.url.split('?')[0];
+      requireJson(req, url.endsWith('/promo-image') ? IMAGE_TYPES : url.endsWith('/ring-file') ? AUDIO_TYPES : []);
     });
 
     // A branch of THIS brand, or 404 (never reveals other brands' branches).
@@ -199,6 +219,38 @@ export default async function brandRoutes(app, deps) {
     b.get('/app', async (req) => appView(deps, control.getBrand(req.params.brand)));
 
     // What customers read, in the brand's own words (empty = the default sentence).
+    // ---- the customers' ring: a tone of the library, or the brand's own sound ----
+
+    b.get('/ring', async (req) => ringView(req.params.brand, control.brandRing(req.params.brand)));
+
+    // A tone of the library (and the brand's own sound, if any, goes).
+    b.post('/ring', async (req) => {
+      const tone = req.body?.tone;
+      if (!RING_IDS.has(tone)) throw new HttpError(400, 'الرنة دي مش موجودة', { field: 'tone' });
+      const saved = control.setBrandRing(req.params.brand, tone === DEFAULT_RING ? null : { tone, file: null });
+      await clearRingFiles(config, req.params.brand);
+      control.audit({ actor: `owner:${req.owner.id}`, action: 'brand.ring', brandId: req.params.brand, detail: { tone }, ip: req.ip });
+      return ringView(req.params.brand, saved);
+    });
+
+    // The brand's own sound (mp3, wav, ogg, m4a, webm), up to 600 KB.
+    b.post('/ring-file', async (req) => {
+      if (Buffer.isBuffer(req.body) && req.body.length > RING_FILE_MAX_BYTES) {
+        throw new HttpError(413, 'ملف الرنة لازم يكون أقل من 600 كيلوبايت', { field: 'ringFile' });
+      }
+      const ext = sniffAudio(req.body);
+      if (!ext) throw new HttpError(400, 'الملف لازم يكون صوت MP3 أو WAV أو OGG أو M4A', { field: 'ringFile' });
+      const dir = brandAppDir(config, req.params.brand);
+      await fs.promises.mkdir(dir, { recursive: true });
+      const file = `ring-${Date.now()}.${ext}`;
+      await fs.promises.writeFile(path.join(dir, file), req.body);
+      await clearRingFiles(config, req.params.brand, file);
+      const before = control.brandRing(req.params.brand);
+      const saved = control.setBrandRing(req.params.brand, { tone: before?.tone ?? DEFAULT_RING, file });
+      control.audit({ actor: `owner:${req.owner.id}`, action: 'brand.ring_file', brandId: req.params.brand, ip: req.ip });
+      return ringView(req.params.brand, saved);
+    });
+
     b.get('/texts', async (req) => ({ texts: control.brandTexts(req.params.brand) }));
     b.post('/texts', async (req) => {
       const { texts, error, field } = cleanTexts(req.body?.texts);
