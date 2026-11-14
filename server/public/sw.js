@@ -33,6 +33,11 @@ async function handlePush(data) {
     return;
   }
   const { title, options } = notificationFor(data);
+  // Ready (and each ring again): the old notification goes and a new one is posted. Some
+  // Android phones stay silent when a quiet notification is only updated in place.
+  if (options.renotify) {
+    for (const n of await self.registration.getNotifications({ tag })) n.close();
+  }
   await self.registration.showNotification(title, options);
 }
 

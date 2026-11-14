@@ -34,6 +34,8 @@ const CSP = [
   "img-src 'self' data: blob: https://aurexis.cc",
   "style-src 'self'",
   "font-src 'self'",
+  // blob: the customer page's inaudible track that keeps it ringing on a locked Android phone.
+  "media-src 'self' blob:",
   "script-src 'self'",
   "connect-src 'self'",
   "worker-src 'self'",
