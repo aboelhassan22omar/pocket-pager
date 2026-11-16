@@ -23,7 +23,7 @@ const USAGE = `Pocket Pager CLI
   node src/cli.js branch suspend <branch>
   node src/cli.js branch resume <branch>
   node src/cli.js owner create <brand> <username> [password] [email]
-  node src/cli.js owner reset <username> [password]
+  node src/cli.js owner reset <brand> <username> [password]
   node src/cli.js backup                                            back up now into $DATA_DIR/backups/<day>
   node src/cli.js hash-password <password>                          value for SUPER_PASSWORD_HASH
 `;
@@ -122,16 +122,16 @@ async function main([command, sub, ...rest]) {
   } else if (command === 'owner' && sub === 'create') {
     const [brandId, username, given, email] = rest;
     if (!control.getBrand(brandId)) throw new HttpError(404, `No brand "${brandId}"`);
-    if (!USERNAME_RE.test(username ?? '')) throw new HttpError(400, 'username: 3-32 of a-z 0-9 . _ -');
-    if (control.ownerByUsername(username)) throw new HttpError(409, `Username "${username}" is taken`);
+    if (!USERNAME_RE.test(username ?? '')) throw new HttpError(400, 'username: 3-32 of A-Z a-z 0-9 . _ -');
+    if (control.ownerInBrand(brandId, username)) throw new HttpError(409, `Username "${username}" is taken in this brand`);
     const password = given ? checkPassword(given) : randomId(9);
     control.createOwner({ brandId, username, email: email ?? null, ...(await passwordFields(config.cookieSecret, password)) });
     audit('owner.create', { brandId, detail: { username } });
     console.log(`Owner "${username}" for brand "${brandId}"\n  password: ${password}\n  login:    ${config.publicUrl}/brand/${brandId}`);
   } else if (command === 'owner' && sub === 'reset') {
-    const [username, given] = rest;
-    const owner = control.ownerByUsername(username ?? '');
-    if (!owner) throw new HttpError(404, `No owner "${username}"`);
+    const [brandId, username, given] = rest;
+    const owner = control.ownerInBrand(brandId ?? '', username ?? '');
+    if (!owner) throw new HttpError(404, `No owner "${username}" in brand "${brandId}"`);
     const password = given ? checkPassword(given) : randomId(9);
     control.resetOwnerPassword(owner.id, await passwordFields(config.cookieSecret, password));
     audit('owner.reset', { brandId: owner.brand_id, detail: { username } });

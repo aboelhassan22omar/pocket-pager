@@ -143,6 +143,28 @@ export const CONTROL_MIGRATIONS = [
   `
   ALTER TABLE brands ADD COLUMN ring TEXT;
   `,
+  // 12: owner usernames are unique within their brand only (each brand logs in at its own
+  //     /brand/<id>), capitals allowed; "Ahmed" and "ahmed" are the same name (NOCASE).
+  `
+  CREATE TABLE owners_new (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    brand_id TEXT NOT NULL REFERENCES brands (id),
+    username TEXT NOT NULL,
+    email TEXT,
+    password_hash TEXT NOT NULL,
+    pw_version INTEGER NOT NULL DEFAULT 1,
+    created_at INTEGER NOT NULL,
+    last_login_at INTEGER,
+    password_sealed TEXT,
+    phone TEXT
+  );
+  INSERT INTO owners_new (id, brand_id, username, email, password_hash, pw_version, created_at, last_login_at, password_sealed, phone)
+    SELECT id, brand_id, username, email, password_hash, pw_version, created_at, last_login_at, password_sealed, phone FROM owners;
+  DROP TABLE owners;
+  ALTER TABLE owners_new RENAME TO owners;
+  CREATE UNIQUE INDEX owners_brand_username ON owners (brand_id, username COLLATE NOCASE);
+  CREATE INDEX owners_username ON owners (username COLLATE NOCASE);
+  `,
 ];
 
 export const branchDbPath = (brandId, branchId) => `tenants/${brandId}/${branchId}/pager.db`;
@@ -173,7 +195,8 @@ export class ControlStore {
       setPromoFlag: p('UPDATE branches SET ff_promo = ? WHERE id = ?'),
       setPlanStatus: p('UPDATE branches SET plan_status = ? WHERE id = ?'),
       owner: p('SELECT * FROM owners WHERE id = ?'),
-      ownerByName: p('SELECT * FROM owners WHERE username = ?'),
+      ownersByName: p('SELECT * FROM owners WHERE username = ? COLLATE NOCASE ORDER BY id'),
+      ownerInBrand: p('SELECT * FROM owners WHERE brand_id = ? AND username = ? COLLATE NOCASE'),
       brandOwners: p('SELECT id, brand_id, username, email, phone, password_sealed, created_at, last_login_at FROM owners WHERE brand_id = ? ORDER BY id'),
       insertOwner: p('INSERT INTO owners (brand_id, username, email, phone, password_hash, password_sealed, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'),
       ownerContact: p('UPDATE owners SET email = ?, phone = ? WHERE id = ?'),
@@ -387,8 +410,14 @@ export class ControlStore {
     return this.sql.owner.get(id);
   }
 
-  ownerByUsername(username) {
-    return this.sql.ownerByName.get(username);
+  /** Every brand's owner by this name (the same name may be used in several brands). */
+  ownersByUsername(username) {
+    return this.sql.ownersByName.all(username);
+  }
+
+  /** This brand's owner by this name, capitals or not. */
+  ownerInBrand(brandId, username) {
+    return this.sql.ownerInBrand.get(brandId, username);
   }
 
   ownersOfBrand(brandId) {

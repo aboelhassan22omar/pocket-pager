@@ -377,7 +377,7 @@ node src/cli.js branch create <brand> <id> <name> <pin> [area]   # المعرّ�
 node src/cli.js branch list [brand]
 node src/cli.js branch pin|suspend|resume <branch> ...
 node src/cli.js owner create <brand> <username> [password] [email]
-node src/cli.js owner reset <username> [password]
+node src/cli.js owner reset <brand> <username> [password]
 node src/cli.js hash-password <password>                          # لـ SUPER_PASSWORD_HASH
 ```
 

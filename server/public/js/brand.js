@@ -21,7 +21,7 @@ function showLogin() {
   root.innerHTML = `
     <form class="login login-account" novalidate>
       <h1>دخول صاحب البراند</h1>
-      <input class="input" name="username" dir="ltr" autocomplete="username" placeholder="اسم المستخدم" aria-label="اسم المستخدم" required>
+      <input class="input" name="username" dir="ltr" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="اسم المستخدم" aria-label="اسم المستخدم" required>
       <input class="input" name="password" type="password" autocomplete="current-password" placeholder="كلمة السر" aria-label="كلمة السر" required>
       <p class="form-error" hidden></p>
       <button class="btn btn-primary btn-block" type="submit">دخول</button>
@@ -35,7 +35,7 @@ function showLogin() {
       try {
         const res = await api('/api/brand/login', {
           method: 'POST',
-          body: { username: form.elements.username.value.trim(), password: form.elements.password.value },
+          body: { username: form.elements.username.value.trim(), password: form.elements.password.value, brandId },
         });
         // An owner always lands on their own brand.
         if (res.brandId !== brandId) {

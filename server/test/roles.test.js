@@ -177,7 +177,6 @@ describe('roles and plans', () => {
     assert.equal(created.status, 201);
     assert.ok(created.data.password.length >= 8, 'generated password returned once');
     assert.equal((await superPost('/brands/brandy/owners', { username: 'owner.y', password: 'owner-y-pass' })).status, 201);
-    assert.equal((await superPost('/brands/brandy/owners', { username: 'owner.x' })).status, 409, 'username of another brand');
 
     owners.x = client(server.url);
     const login = await owners.x.post('/api/brand/login', { username: 'owner.x', password: created.data.password });
@@ -295,6 +294,36 @@ describe('roles and plans', () => {
     assert.ok(!/pin_hash|pin_sealed|password_sealed|scrypt\$/.test(raw));
   });
 
+  test('owner usernames: capitals allowed; the same name in two brands, each logs in to its own', async () => {
+    await superPost('/brands', { id: 'samea', name: 'Same A' });
+    await superPost('/brands', { id: 'sameb', name: 'Same B' });
+    const a = await superPost('/brands/samea/owners', { username: 'Ahmed.M', password: 'same-a-pass' });
+    assert.equal(a.status, 201);
+    assert.equal(a.data.owner.username, 'Ahmed.M', 'kept as written');
+    const b = await superPost('/brands/sameb/owners', { username: 'Ahmed.M', password: 'same-b-pass' });
+    assert.equal(b.status, 201, 'the same name in another brand');
+    // The same brand, capitals or not: that owner (a new password), never a second one.
+    const again = await superPost('/brands/sameb/owners', { username: 'ahmed.m', password: 'same-b-pass2' });
+    assert.equal(again.status, 200);
+    assert.equal(again.data.owner.id, b.data.owner.id);
+
+    // Each password opens its own brand, from either brand's page, whatever the capitals.
+    for (const [password, brandId, page] of [['same-a-pass', 'samea', 'samea'], ['same-b-pass2', 'sameb', 'samea'], ['same-a-pass', 'samea', 'sameb'], ['same-a-pass', 'samea', undefined]]) {
+      const c = client(server.url);
+      const login = await c.post('/api/brand/login', { username: ' AHMED.m ', password, brandId: page });
+      assert.equal(login.status, 200, `${brandId} from ${page}`);
+      assert.equal(login.data.brandId, brandId);
+      assert.equal((await c.get(`/api/brand/${brandId}/overview`)).status, 200);
+    }
+    assert.equal((await client(server.url).post('/api/brand/login', { username: 'Ahmed.M', password: 'same-b-pass', brandId: 'sameb' })).status, 401, 'the old password');
+
+    // Within one brand a name is taken whatever its capitals.
+    const sara = await superPost('/brands/samea/owners', { username: 'Sara', password: 'sara-pass-123' });
+    assert.equal((await superPost(`/brands/samea/owners/${sara.data.owner.id}`, { username: 'AHMED.M' })).status, 409);
+    assert.equal((await superPost(`/brands/samea/owners/${sara.data.owner.id}`, { username: 'SARA' })).status, 200);
+    assert.equal((await superPost('/brands/samea/owners', { username: 'أحمد' })).data.field, 'username');
+  });
+
   test('super sees the owner login and edits username and password in place', async () => {
     const brandOf = async () => (await su.get('/api/super/overview')).data.brands.find((b) => b.id === 'brandx');
     let owner = (await brandOf()).owners[0];
@@ -304,7 +333,8 @@ describe('roles and plans', () => {
     // Username only: the owner stays signed in.
     assert.equal((await superPost(`/brands/brandx/owners/${owner.id}`, { username: 'owner.x2' })).status, 200);
     assert.equal((await owners.x.get('/api/brand/brandx/overview')).status, 200);
-    assert.equal((await superPost(`/brands/brandx/owners/${owner.id}`, { username: 'owner.y' })).status, 409);
+    assert.equal((await superPost(`/brands/brandx/owners/${owner.id}`, { username: 'Owner.X2' })).status, 200, 'own name, other capitals');
+    assert.equal((await superPost(`/brands/brandx/owners/${owner.id}`, { username: 'owner.x2' })).status, 200);
     assert.equal((await superPost(`/brands/brandy/owners/${owner.id}`, { username: 'zzz' })).status, 404, 'owner of another brand');
     assert.equal((await superPost(`/brands/brandx/owners/${owner.id}`, { password: 'short' })).data.field, 'password');
 

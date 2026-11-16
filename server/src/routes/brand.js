@@ -67,6 +67,9 @@ export function ownerExtraFields(body) {
   return fields;
 }
 
+// Password checks per login at most (one per brand using that name).
+const MAX_LOGIN_CANDIDATES = 5;
+
 // Brand owner: sees and manages the branches of their own brand only.
 export default async function brandRoutes(app, deps) {
   const { config, control, tenants, service } = deps;
@@ -74,16 +77,25 @@ export default async function brandRoutes(app, deps) {
   app.addHook('onClose', async () => loginLimiter.close());
 
   app.post('/api/brand/login', async (req, reply) => {
-    const { username, password } = req.body ?? {};
-    const limit = loginLimiter.take(`owner|${username}|${req.ip}`);
+    const { username, password, brandId } = req.body ?? {};
+    const name = typeof username === 'string' ? username.trim() : '';
+    const limit = loginLimiter.take(`owner|${name.toLowerCase()}|${req.ip}`);
     if (!limit.ok) {
       reply.header('retry-after', String(limit.retryAfter));
       throw new HttpError(429, 'محاولات كتير. استنى دقيقة وجرّب تاني');
     }
-    const owner = typeof username === 'string' ? control.ownerByUsername(username) : null;
-    if (!owner || !(await verifyPin(String(password ?? ''), owner.password_hash))) {
-      throw new HttpError(401, 'اسم المستخدم أو كلمة السر غلط');
+    // The same name may be used in several brands: the login page's brand first, then the
+    // others (an owner on another brand's page still lands on their own). Capitals or not.
+    const candidates = name ? control.ownersByUsername(name) : [];
+    candidates.sort((a, b) => (b.brand_id === brandId) - (a.brand_id === brandId));
+    let owner = null;
+    for (const o of candidates.slice(0, MAX_LOGIN_CANDIDATES)) {
+      if (await verifyPin(String(password ?? ''), o.password_hash)) {
+        owner = o;
+        break;
+      }
     }
+    if (!owner) throw new HttpError(401, 'اسم المستخدم أو كلمة السر غلط');
     if (control.getBrand(owner.brand_id)?.deleted_at) throw new HttpError(403, 'الحساب ده متوقف. كلّم Aurexis');
     control.markOwnerLogin(owner.id);
     setOwnerSession(reply, config, owner);

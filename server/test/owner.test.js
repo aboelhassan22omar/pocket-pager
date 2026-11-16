@@ -1,10 +1,43 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { hashPin } from '../src/auth.js';
 import { cleanEmail, cleanPhone } from '../src/contact.js';
+import { CONTROL_MIGRATIONS, openControl } from '../src/control.js';
+import { runMigrations } from '../src/migrations.js';
 import { client, startServer } from './helpers.js';
 
 const SUPER_PASSWORD = 'super-secret-pass';
+
+describe('owner usernames: an existing database moves to names per brand', () => {
+  test('owners kept as they were; afterwards one name in two brands, never twice in one', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sp-owners-'));
+    const file = path.join(dir, 'control.db');
+    const old = new DatabaseSync(file);
+    runMigrations(old, CONTROL_MIGRATIONS.slice(0, 12));
+    old.exec(`INSERT INTO brands (id, name, created_at) VALUES ('ba', 'A', 1), ('bb', 'B', 1);
+      INSERT INTO owners (brand_id, username, email, password_hash, pw_version, created_at, phone)
+      VALUES ('ba', 'owner.a', 'a@example.com', 'h1', 3, 5, '0100');`);
+    old.close();
+
+    const control = openControl(file);
+    try {
+      const [a] = control.ownersByUsername('OWNER.A');
+      assert.deepEqual([a.id, a.brand_id, a.username, a.email, a.pw_version, a.phone], [1, 'ba', 'owner.a', 'a@example.com', 3, '0100']);
+      const b = control.createOwner({ brandId: 'bb', username: 'Owner.A', passwordHash: 'h2' });
+      assert.equal(b.id, 2);
+      assert.equal(control.ownersByUsername('owner.a').length, 2);
+      assert.equal(control.ownerInBrand('bb', 'OWNER.a').id, 2);
+      assert.throws(() => control.createOwner({ brandId: 'ba', username: 'OWNER.A', passwordHash: 'h3' }), /UNIQUE/);
+    } finally {
+      control.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
 
 describe('owner contact: cleaning', () => {
   test('phone: Arabic digits, spaces and dashes as typed; empty is none', () => {
