@@ -55,6 +55,8 @@ export const publicShop = (shop, { today } = {}) => ({
   googleReviewUrl: reviewEnabled(shop) ? reviewUrl(shop) : null,
   // «رسالة للإدارة» at the bottom of the order page.
   messageBox: Boolean(shop.message_box),
+  // «شارك الطلب»: the order's link for someone with the customer (off = one phone per order).
+  orderShare: shop.order_share == null ? true : Boolean(shop.order_share),
   // Stamp card rule (phase 6); the device's own count comes from GET /loyalty.
   loyalty: loyaltyEnabled(shop) ? { every: shop.loyalty_every, rewardText: shop.loyalty_reward_text ?? '' } : null,
   promo: today ? promoView(shop, today) : null,

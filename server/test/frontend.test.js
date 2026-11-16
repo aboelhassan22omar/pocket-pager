@@ -407,6 +407,17 @@ describe('locked Android phone: the page held awake', () => {
   });
 });
 
+describe('«شارك الطلب»', () => {
+  test('the order’s own joining link, the share sheet or a copy, hidden when closed, ready or sharing is off', () => {
+    const js = read('public/js/customer.js');
+    assert.match(js, /\?o=\$\{encodeURIComponent\(order\.id\)\}&j=1/);
+    assert.match(js, /navigator\.share\(/);
+    assert.match(js, /navigator\.clipboard\.writeText/);
+    assert.match(js, /\$\('share'\)\.hidden = closed \|\| order\.status === 'ready' \|\| !shop\?\.orderShare;/);
+    assert.match(read('public/s.html'), /id="share"[^>]*hidden/);
+  });
+});
+
 describe('dashboards on Bootstrap', () => {
   for (const page of ['public/brand.html', 'public/super.html']) {
     test(`${page}: Bootstrap RTL first, our bridge and tokens after it`, () => {
