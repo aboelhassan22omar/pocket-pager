@@ -7,6 +7,7 @@ import { AUDIO_TYPES, RING_FILE_MAX_BYTES } from './ring.js';
 import { openStorage } from './bootstrap.js';
 import { createBus, createScreens } from './bus.js';
 import { HttpError } from './errors.js';
+import { createAlarms } from './alarm.js';
 import { createNotifier } from './notify/index.js';
 import { PUBLIC_DIR } from './paths.js';
 import { ensureSecrets } from './secrets.js';
@@ -34,8 +35,8 @@ const CSP = [
   "img-src 'self' data: blob: https://aurexis.cc",
   "style-src 'self'",
   "font-src 'self'",
-  // blob: the customer page's inaudible track that keeps it ringing on a locked Android phone.
-  "media-src 'self' blob:",
+  // 'self': the customer's alarm stream (src/alarm.js).
+  "media-src 'self'",
   "script-src 'self'",
   "connect-src 'self'",
   "worker-src 'self'",
@@ -62,7 +63,8 @@ export async function buildApp(config) {
   const notifier = createNotifier({ tenants, config, log: app.log });
   const service = createService({ control, tenants, bus, notifier, screens, config, log: app.log });
   const packages = createPackages({ config });
-  const ctx = { config, control, tenants, bus, screens, notifier, service, packages };
+  const alarms = createAlarms({ config, control, bus, log: app.log });
+  const ctx = { config, control, tenants, bus, screens, notifier, service, packages, alarms };
 
   app.addContentTypeParser(LOGO_TYPES, { parseAs: 'buffer', bodyLimit: LOGO_MAX_BYTES }, (_req, body, done) => {
     done(null, body);
@@ -153,6 +155,7 @@ export async function buildApp(config) {
     clearInterval(summaries);
     stopBackups();
     notifier.close();
+    alarms.stop();
     service.close();
     tenants.closeAll();
     control.close();

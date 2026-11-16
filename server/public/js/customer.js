@@ -1,7 +1,7 @@
 import { Chime } from './chime.js';
 import { applyTheme } from './color.js';
 import { icons } from './icons.js';
-import { holdOnLockScreen, releaseLockScreen, showOnLockScreen } from './lockscreen.js';
+import { AlarmStream } from './lockscreen.js';
 import { loyaltyHtml } from './loyalty-card.js';
 import { aheadText, etaText } from './queue-text.js';
 import { applyTexts, setTexts, t } from './texts.js';
@@ -28,6 +28,7 @@ const othersKey = `sp:others:${shopId}`;
 // Every customer call is scoped to this branch; an order id is only valid under its own branch.
 const branchApi = `/api/b/${encodeURIComponent(shopId)}`;
 const chime = new Chime();
+const alarm = new AlarmStream();
 const startedAt = performance.now();
 
 let shop = null;
@@ -174,10 +175,10 @@ function render() {
   renderLockScreen();
 }
 
-// Android, phone locked: the order on the lock screen, and the page kept running to ring.
+// The lock screen shows the order (as the alarm stream's "now playing").
 function renderLockScreen() {
   const ready = order.status === 'ready';
-  showOnLockScreen({
+  alarm.show({
     title: ready ? `طلبك رقم ${label(order)} جاهز` : `طلبك رقم ${label(order)}`,
     text: order.message,
     shopName: order.shopName,
@@ -185,9 +186,14 @@ function renderLockScreen() {
   });
 }
 
-function holdForLock() {
-  if (!isAndroid() || !order || CLOSED.includes(order.status)) return;
-  if (holdOnLockScreen()) renderLockScreen();
+// Ready, and this phone hasn't tapped "got it" for this ring yet.
+const ringDue = () => order?.status === 'ready' && order.notifyCount > Number(store.get(`sp:ack:${order.id}`) ?? 0);
+
+/** The alarm stream for this order: rings with the screen locked too. Needs a tap behind it. */
+function armAlarm() {
+  if (!order || CLOSED.includes(order.status)) return;
+  alarm.start(`${branchApi}/orders/${encodeURIComponent(order.id)}`, ringDue);
+  renderLockScreen();
 }
 
 const deviceHeaders = () => {
@@ -289,8 +295,7 @@ function showReady() {
   $('ready-message').textContent = order.message;
   $('ready').hidden = false;
   document.body.classList.add('is-ready');
-  const acked = Number(store.get(`sp:ack:${order.id}`) ?? 0);
-  if (order.notifyCount > acked) startRinging();
+  if (ringDue()) startRinging();
   else $('ready-hint').hidden = true;
 }
 
@@ -302,13 +307,24 @@ function hideReady() {
 
 // ---------- alarm ----------
 
+let ringTimer = null;
+
 function startRinging() {
   if (ringing) return;
   ringing = true;
   chime.unlock();
+  // On screen the page rings at once (the stream's ring comes seconds later, muted then);
+  // locked or in another app, the stream rings.
+  const onScreen = () => document.visibilityState === 'visible';
+  alarm.setMuted(onScreen());
   $('ready').classList.add('is-ringing');
   $('ready-hint').hidden = false;
-  chime.loop('ready', RING_EVERY_MS, () => navigator.vibrate?.([400, 160, 400, 160, 700]));
+  const tick = () => {
+    if (onScreen() || !alarm.live) chime.play('ready');
+    navigator.vibrate?.([400, 160, 400, 160, 700]);
+  };
+  tick();
+  ringTimer = setInterval(tick, RING_EVERY_MS);
   setTimeout(() => {
     document.addEventListener('pointerdown', acknowledge, { once: true });
     document.addEventListener('keydown', acknowledge, { once: true });
@@ -318,6 +334,9 @@ function startRinging() {
 function stopRinging(remember = true) {
   if (!ringing) return;
   ringing = false;
+  if (!remember) alarm.unmute();
+  clearInterval(ringTimer);
+  ringTimer = null;
   chime.stop();
   navigator.vibrate?.(0);
   $('ready').classList.remove('is-ringing');
@@ -329,6 +348,7 @@ function stopRinging(remember = true) {
 
 function acknowledge() {
   stopRinging(true);
+  alarm.ack();
 }
 
 // ---------- live updates ----------
@@ -345,7 +365,7 @@ function apply(next) {
     stopPolling();
     setOnline(true);
     releaseAwake();
-    releaseLockScreen();
+    alarm.stop();
   }
 }
 
@@ -474,7 +494,7 @@ function onEnable() {
   chime.unlock();
   chime.play('soft');
   keepAwake();
-  holdForLock();
+  armAlarm();
   button.disabled = true;
   button.textContent = t('enable_working');
 
@@ -672,6 +692,7 @@ function switchTo(id) {
   render();
   connect();
   autoSubscribe();
+  armAlarm();
 }
 
 async function restoreOthers() {
@@ -784,15 +805,23 @@ async function boot() {
   autoSubscribe();
   // Android: hold the page for the locked phone now if the browser lets it (a tap earlier on
   // this page, e.g. picking the number), else at the first tap.
-  holdForLock();
-  document.addEventListener('pointerdown', holdForLock, { once: true });
+  // The alarm stream starts at the first tap anywhere (a browser rule), or right away when
+  // this page already had one (picking the number).
+  armAlarm();
+  document.addEventListener('click', armAlarm, { once: true });
+  document.addEventListener('touchend', armAlarm, { once: true });
   setInterval(() => {
     if (!order) return;
     $('card-when').textContent = elapsedLabel(order.createdAt);
     renderQueue();
   }, 30_000);
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && order && !CLOSED.includes(order.status)) refresh();
+    // Ringing: the page rings while on screen, the stream once it isn't.
+    if (ringing) alarm.setMuted(document.visibilityState === 'visible');
+    if (document.visibilityState === 'visible' && order && !CLOSED.includes(order.status)) {
+      refresh();
+      alarm.catchUp();
+    }
   });
 }
 

@@ -1,3 +1,4 @@
+import { ALARM_SID_RE } from '../alarm.js';
 import { HttpError } from '../errors.js';
 import { ringView } from '../ring.js';
 import { channels } from '../bus.js';
@@ -7,7 +8,7 @@ import {
 import { canClaim } from '../plans.js';
 import { createRateLimiter } from '../ratelimit.js';
 import { openSse } from '../sse.js';
-import { FEEDBACK_WINDOW_MS, OPEN_STATUSES } from '../store.js';
+import { CLOSED_STATUSES, FEEDBACK_WINDOW_MS, OPEN_STATUSES } from '../store.js';
 import { branchTz, dayIn, safeEqual } from '../util.js';
 import { publicShop, reviewEnabled, reviewUrl } from '../views.js';
 
@@ -54,7 +55,7 @@ export function validateLiveActivity(payload) {
   return { token, app };
 }
 
-export default async function customerRoutes(app, { config, control, tenants, bus, notifier, service, screens }) {
+export default async function customerRoutes(app, { config, control, tenants, bus, notifier, service, screens, alarms }) {
   // The QR a POS prints on each receipt: /r/<branch>/<static key>/<receipt number>. Opens that
   // receipt's order: the one already open (another phone scanned it), or a new one with the
   // receipt's number.
@@ -173,6 +174,27 @@ export default async function customerRoutes(app, { config, control, tenants, bu
         setDeviceCookie(reply, config, req.ctx.branch.id, token);
       }
       return service.customerView(req.ctx, req.ctx.store.getOrder(order.id), shop);
+    });
+
+    // The alarm as a live MP3 stream: silent while the order is prepared, the brand's ring when
+    // it is ready, until this phone acks. Plays on with the screen locked (src/alarm.js).
+    b.get('/orders/:id/alarm.mp3', async (req, reply) => {
+      const { order } = loadOrder(req, req.params.id);
+      const sid = String(req.query.s ?? '');
+      if (!ALARM_SID_RE.test(sid)) throw new HttpError(400, 'stream id');
+      if (CLOSED_STATUSES.includes(order.status)) throw new HttpError(410, 'الطلب ده خلص');
+      const opened = alarms.open({
+        req, reply, branchId: req.ctx.branch.id, brandId: req.ctx.branch.brand_id, order, sid, ring: req.query.ring === '1',
+      });
+      if (!opened) throw new HttpError(429, 'busy');
+      return reply;
+    });
+
+    b.post('/orders/:id/alarm/ack', async (req) => {
+      const { order } = loadOrder(req, req.params.id);
+      const sid = String(req.body?.s ?? '');
+      if (!ALARM_SID_RE.test(sid)) throw new HttpError(400, 'stream id');
+      return { ok: alarms.ack(order.id, sid) };
     });
 
     b.get('/orders/:id', async (req) => {
