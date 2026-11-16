@@ -18,7 +18,7 @@ import { isTimeZone, randomId } from '../util.js';
 import { barShop, publicOrder } from '../views.js';
 import { sniffImage } from './bar.js';
 
-export const USERNAME_RE = /^[a-z0-9._-]{3,32}$/;
+export const USERNAME_RE = /^[A-Za-z0-9._-]{3,32}$/;
 const bad = (field, message) => new HttpError(400, message, { field });
 
 export function checkPassword(value, field = 'password') {
@@ -115,7 +115,7 @@ export default async function superRoutes(app, deps) {
 
     function checkUsername(username) {
       if (typeof username !== 'string' || !USERNAME_RE.test(username)) {
-        throw bad('username', 'اسم المستخدم من 3 لـ 32 حرف إنجليزي صغير أو أرقام أو . _ -');
+        throw bad('username', 'اسم المستخدم من 3 لـ 32 حرف إنجليزي (كبير أو صغير) أو أرقام أو . _ -');
       }
       return username;
     }
@@ -136,8 +136,8 @@ export default async function superRoutes(app, deps) {
       const contact = { email: cleanEmail(req.body?.email), phone: cleanPhone(req.body?.phone) };
       const password = req.body?.password ? checkPassword(req.body.password) : randomId(9);
       const fields = await passwordFields(config.cookieSecret, password);
-      const existing = control.ownerByUsername(username);
-      if (existing && existing.brand_id !== brandId) throw new HttpError(409, 'اسم المستخدم ده مستخدم في براند تاني', { field: 'username' });
+      // The same name in another brand is fine: each brand logs in at its own page.
+      const existing = control.ownerInBrand(brandId, username);
       const owner = existing
         ? control.resetOwnerPassword(existing.id, fields)
         : control.createOwner({ brandId, username, ...contact, ...fields });
@@ -154,7 +154,8 @@ export default async function superRoutes(app, deps) {
       let updated = owner;
       if (body.username !== undefined && body.username !== owner.username) {
         const username = checkUsername(body.username);
-        if (control.ownerByUsername(username)) throw new HttpError(409, 'اسم المستخدم ده مستخدم قبل كده', { field: 'username' });
+        const taken = control.ownerInBrand(brandId, username);
+        if (taken && taken.id !== owner.id) throw new HttpError(409, 'اسم المستخدم ده مستخدم في البراند ده قبل كده', { field: 'username' });
         updated = control.renameOwner(owner.id, username);
         audit(req, 'owner.rename', { brandId, detail: { from: owner.username, username } });
       }
