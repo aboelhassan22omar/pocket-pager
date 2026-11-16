@@ -68,6 +68,21 @@ describe('a QR per order', () => {
     await settings({ orderShare: true });
   });
 
+  test('«شارك الطلب»: a scanned (static QR) order is followed from its shared link; off with sharing off', async () => {
+    const page = async () => (await client(server.url).get('/api/b/oqr-a')).data;
+    assert.equal((await page()).orderShare, true, 'the page shows the share button');
+    const k = new URL((await bar.get('/api/bar/oqr-a/state')).data.qr.staticUrl).searchParams.get('k');
+    const mine = (await client(server.url).post('/api/b/oqr-a/claim', { k }, { headers: { 'x-client-id': 'eeeeeeeeeeeeeeeeeeee' } })).data;
+    const friend = await join(phone(), mine.id, 'ffffffffffffffffffff');
+    assert.equal(friend.status, 200);
+    assert.equal(friend.data.id, mine.id, 'the friend follows the same order');
+    assert.equal(friend.data.number, mine.number);
+
+    await settings({ orderShare: false });
+    assert.equal((await page()).orderShare, false, 'no share button');
+    await settings({ orderShare: true });
+  });
+
   test('a closed order has no QR any more', async () => {
     const { data: order } = await bar.post('/api/bar/oqr-a/orders');
     await bar.post(`/api/bar/oqr-a/orders/${order.id}/status`, { status: 'cancelled' });

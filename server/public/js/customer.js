@@ -161,6 +161,7 @@ function render() {
   const closed = CLOSED.includes(order.status);
   $('enable').hidden = closed || order.status === 'ready';
   $('ios-hint').hidden = closed || order.status === 'ready' || !isIOS(navigator) || isStandalone();
+  $('share').hidden = closed || order.status === 'ready' || !shop?.orderShare;
   renderPushHint();
   renderReview();
   renderNote();
@@ -503,6 +504,35 @@ async function autoSubscribe() {
   renderPushHint();
 }
 
+// ---------- «شارك الطلب» ----------
+
+// The order's own link (as in its QR): whoever opens it follows this order, and their phone
+// rings too. The phone's share sheet (WhatsApp, ...), or the link copied where there is none.
+async function onShare() {
+  if (!order) return;
+  const url = `${location.origin}/s/${encodeURIComponent(shopId)}?o=${encodeURIComponent(order.id)}&j=1`;
+  const text = t('share_text').replace('{n}', label(order));
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: order.shopName, text, url });
+    } catch {
+      /* closed the share sheet */
+    }
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(`${text}\n${url}`);
+  } catch {
+    window.prompt(t('share'), url);
+    return;
+  }
+  const el = $('share-label');
+  el.textContent = t('share_copied');
+  setTimeout(() => {
+    el.textContent = t('share');
+  }, 2500);
+}
+
 // ---------- boot ----------
 
 async function resolveOrder() {
@@ -749,6 +779,8 @@ async function boot() {
   });
 
   $('enable').addEventListener('click', onEnable);
+  $('share-icon').innerHTML = icons.share(18);
+  $('share').addEventListener('click', onShare);
   autoSubscribe();
   // Android: hold the page for the locked phone now if the browser lets it (a tap earlier on
   // this page, e.g. picking the number), else at the first tap.

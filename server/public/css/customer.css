@@ -275,6 +275,23 @@
   font-weight: 500;
 }
 
+/* «شارك الطلب»: quiet, under the alert button */
+.share {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.share .icon {
+  color: var(--accent);
+}
+
 /* ---------- «رسالة للإدارة»: its own box, at the bottom ---------- */
 
 .note-box {
