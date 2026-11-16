@@ -223,6 +223,52 @@ async function loadRing() {
   renderRing();
 }
 
+// The brand's own sound, as the customers' alarm stream needs it (src/alarm.js): any file the
+// browser can play, made a 22050 Hz mono WAV of at most 6 s, with a short fade at the end.
+const RING_RATE = 22050;
+const RING_MAX_S = 6;
+
+async function toRingWav(file) {
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  const ctx = new AudioCtx();
+  let decoded;
+  try {
+    decoded = await ctx.decodeAudioData(await file.arrayBuffer());
+  } finally {
+    ctx.close?.();
+  }
+  const seconds = Math.min(decoded.duration, RING_MAX_S);
+  const length = Math.max(1, Math.round(seconds * RING_RATE));
+  const offline = new OfflineAudioContext(1, length, RING_RATE);
+  const source = offline.createBufferSource();
+  source.buffer = decoded;
+  source.connect(offline.destination);
+  source.start(0);
+  const samples = (await offline.startRendering()).getChannelData(0);
+  const fade = Math.min(length, Math.round(0.03 * RING_RATE));
+  const buf = new ArrayBuffer(44 + length * 2);
+  const view = new DataView(buf);
+  const text = (at, s) => [...s].forEach((c, i) => view.setUint8(at + i, c.charCodeAt(0)));
+  text(0, 'RIFF');
+  view.setUint32(4, 36 + length * 2, true);
+  text(8, 'WAVE');
+  text(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, RING_RATE, true);
+  view.setUint32(28, RING_RATE * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  text(36, 'data');
+  view.setUint32(40, length * 2, true);
+  for (let i = 0; i < length; i++) {
+    const gain = i >= length - fade ? (length - i) / fade : 1;
+    view.setInt16(44 + i * 2, Math.round(Math.max(-1, Math.min(1, samples[i] * gain)) * 32767), true);
+  }
+  return new Blob([buf], { type: 'audio/wav' });
+}
+
 // The picker: every tone with ▶ to hear it, plus the brand's own file.
 function openRing() {
   let chosen = ring.url ? 'custom' : ring.tone;
@@ -317,7 +363,13 @@ function openRing() {
     error('');
     try {
       if (chosen === 'custom' && file) {
-        ring = await api(`${base}/ring-file`, { method: 'POST', raw: file, contentType: file.type || 'audio/mpeg' });
+        let wav;
+        try {
+          wav = await toRingWav(file);
+        } catch {
+          throw new Error('الملف ده مش صوت أو المتصفح مش عارف يشغّله. جرّب MP3 أو WAV');
+        }
+        ring = await api(`${base}/ring-file`, { method: 'POST', raw: wav, contentType: 'audio/wav' });
       } else if (chosen !== 'custom') {
         ring = await api(`${base}/ring`, { method: 'POST', body: { tone: chosen } });
       }

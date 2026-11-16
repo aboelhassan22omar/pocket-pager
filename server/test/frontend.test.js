@@ -336,74 +336,81 @@ describe('service worker', () => {
   });
 });
 
-describe('locked Android phone: the page held awake', () => {
-  test('an inaudible looping WAV of 10 s, the order on the lock screen, all gone once closed', async () => {
-    const played = [];
+describe('the alarm stream on the customer page', () => {
+  test('a tap starts the stream of this order; a tap on the ring acks it and mutes what is on its way; closed stops it', async () => {
+    const made = [];
+    const posts = [];
     class FakeAudio {
-      constructor(src) {
-        this.src = src;
+      constructor() {
         this.attrs = {};
-      }
-      setAttribute(k, v) {
-        this.attrs[k] = v;
-      }
-      removeAttribute() {
-        this.src = '';
-      }
-      play() {
-        played.push(this);
-        this.paused = false;
-        return Promise.resolve();
-      }
-      pause() {
         this.paused = true;
+        this.muted = false;
+        this.readyState = 0;
+        this.error = null;
+        this.listeners = {};
+        made.push(this);
       }
+      setAttribute(k, v) { this.attrs[k] = v; }
+      getAttribute(k) { return k === 'src' ? this.src ?? null : this.attrs[k]; }
+      removeAttribute(k) { if (k === 'src') this.src = undefined; }
+      addEventListener(n, fn) { this.listeners[n] = fn; }
+      play() { this.paused = false; this.readyState = 4; return Promise.resolve(); }
+      pause() { this.paused = true; }
       load() {}
     }
-    const blobs = new Map();
-    const session = { metadata: null };
+    const session = { metadata: null, handlers: {}, setActionHandler(n, fn) { this.handlers[n] = fn; } };
     globalThis.Audio = FakeAudio;
     globalThis.MediaMetadata = class { constructor(m) { Object.assign(this, m); } };
-    const realCreate = URL.createObjectURL;
-    URL.createObjectURL = (blob) => {
-      blobs.set('blob:x', blob);
-      return 'blob:x';
-    };
     Object.defineProperty(globalThis, 'navigator', { value: { mediaSession: session }, configurable: true });
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (url, init) => { posts.push({ url, body: JSON.parse(init.body) }); return new Response('{}'); };
     try {
-      const lock = await import('../public/js/lockscreen.js');
-      assert.equal(lock.holdOnLockScreen(), true);
-      lock.holdOnLockScreen();
-      assert.equal(played.length, 2);
-      assert.equal(played[0], played[1], 'one track, played again, never two');
-      assert.equal(played[0].loop, true);
-      const wav = new DataView(await blobs.get('blob:x').arrayBuffer());
-      const rate = wav.getUint32(24, true);
-      const bytes = wav.getUint32(40, true);
-      assert.equal(bytes / 2 / rate, 10);
-      let peak = 0;
-      for (let i = 44; i < 44 + bytes; i += 2) peak = Math.max(peak, Math.abs(wav.getInt16(i, true)));
-      assert.ok(peak > 0 && peak <= 64, `quiet but not silent (peak ${peak})`);
+      const { AlarmStream } = await import('../public/js/lockscreen.js');
+      const alarm = new AlarmStream();
+      let ready = false;
+      alarm.start('/api/b/cafe-a/orders/o1', () => ready);
+      assert.equal(made.length, 1);
+      assert.match(made[0].src, /^\/api\/b\/cafe-a\/orders\/o1\/alarm\.mp3\?s=[0-9a-f]{24}&ring=0$/);
+      assert.equal(alarm.live, true);
+      alarm.start('/api/b/cafe-a/orders/o1', () => ready);
+      assert.equal(made.length, 1, 'one element, the same stream while it plays');
+      assert.ok(session.handlers.pause, 'the lock screen pause button does not stop the alarm');
 
-      lock.showOnLockScreen({ title: 'طلبك رقم 3 جاهز', text: 'اتفضل', shopName: 'Café' });
-      assert.equal(session.metadata.title, 'طلبك رقم 3 جاهز');
-      lock.releaseLockScreen();
-      assert.equal(played[0].paused, true);
+      alarm.show({ title: 'طلبك رقم 3', text: 'بيتحضر', shopName: 'Café' });
+      assert.equal(session.metadata.title, 'طلبك رقم 3');
+
+      alarm.ack();
+      await new Promise((r) => setTimeout(r, 0));
+      assert.equal(made[0].muted, true, 'the ring already on its way plays muted');
+      assert.equal(posts[0].url, '/api/b/cafe-a/orders/o1/alarm/ack');
+      assert.match(posts[0].body.s, /^[0-9a-f]{24}$/);
+      alarm.unmute();
+      assert.equal(made[0].muted, false, 'a new ring is heard');
+
+      alarm.stop();
+      assert.equal(made[0].paused, true);
       assert.equal(session.metadata, null);
+      ready = true;
+      alarm.start('/api/b/cafe-a/orders/o2', () => ready);
+      assert.match(made[0].src, /orders\/o2\/alarm\.mp3\?s=\w+&ring=1$/, 'an order already ready rings at once');
     } finally {
-      URL.createObjectURL = realCreate;
+      globalThis.fetch = realFetch;
       delete globalThis.Audio;
       delete globalThis.MediaMetadata;
       delete globalThis.navigator;
     }
   });
 
-  test('the customer page holds it on Android and lets go when the order closes; CSP lets the track play', () => {
+  test('the customer page: armed at a tap, the page rings on screen and the stream when locked, stopped when closed', () => {
     const js = read('public/js/customer.js');
-    assert.match(js, /holdForLock\(\);\n\s*document\.addEventListener\('pointerdown', holdForLock/);
-    assert.match(js, /releaseAwake\(\);\n\s*releaseLockScreen\(\);/);
-    assert.match(js, /if \(!isAndroid\(\)/);
-    assert.match(read('src/app.js'), /media-src 'self' blob:/);
+    assert.match(js, /document\.addEventListener\('click', armAlarm, \{ once: true \}\)/);
+    assert.match(js, /document\.addEventListener\('touchend', armAlarm, \{ once: true \}\)/);
+    assert.match(js, /if \(onScreen\(\) \|\| !alarm\.live\) chime\.play\('ready'\)/);
+    assert.match(js, /if \(ringing\) alarm\.setMuted\(document\.visibilityState === 'visible'\)/);
+    assert.match(js, /stopRinging\(true\);\n\s*alarm\.ack\(\);/);
+    assert.match(js, /releaseAwake\(\);\n\s*alarm\.stop\(\);/);
+    assert.match(read('src/app.js'), /"media-src 'self'"/);
+    assert.doesNotMatch(read('public/js/lockscreen.js'), /noise|NOISE/, 'no hiss track any more');
   });
 });
 
