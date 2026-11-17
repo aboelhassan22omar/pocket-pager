@@ -17,7 +17,7 @@ struct Shop: Codable, Equatable {
     let googleReviewUrl: String?
 
     var accentColor: Color { accent.flatMap { Color(hexString: $0.color) } ?? Theme.accent }
-    var accentInk: Color { accent.flatMap { Color(hexString: $0.ink) } ?? Theme.background }
+    var accentInk: Color { accent.flatMap { Color(hexString: $0.ink) } ?? Theme.onAccent }
 }
 
 struct Order: Codable, Equatable {
