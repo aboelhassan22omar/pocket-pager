@@ -128,8 +128,20 @@ export function staffEvents(shopId, handlers, onStatus, { screen = 'bar' } = {})
     }
   };
   connect();
+  // The device says the network is back: reconnect now (and send the waiting taps) instead of
+  // waiting for the browser's next retry, which can take long after a drop.
+  const onOnline = () => {
+    clearTimeout(retry);
+    es?.close();
+    connect();
+  };
+  const onOffline = () => status(false);
+  addEventListener('online', onOnline);
+  addEventListener('offline', onOffline);
   return () => {
     clearTimeout(retry);
+    removeEventListener('online', onOnline);
+    removeEventListener('offline', onOffline);
     es?.close();
   };
 }

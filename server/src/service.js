@@ -53,6 +53,8 @@ export function createService({ control, tenants, bus, notifier, screens, config
     return {
       ...publicOrder(order, shop), queue: queueFor(ctx, order, stats), feedback: fb ? { rating: fb.rating } : null,
       noteSent: shop.message_box ? ctx.store.hasMessage(order.id) : false,
+      // The page's clock: "من 5 د" and the wait estimate count on this, not the phone's.
+      serverNow: Date.now(),
     };
   }
 

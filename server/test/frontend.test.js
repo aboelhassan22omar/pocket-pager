@@ -9,7 +9,8 @@ import {
 } from '../public/js/color.js';
 import { reviewHtml } from '../public/js/review.js';
 import { mountPoweredBy, AUREXIS_LOGO, AUREXIS_URL } from '../public/js/powered.js';
-import { esc, isCashierApp, SPLASH_MIN_MS } from '../public/js/util.js';
+import { elapsedLabel, esc, isCashierApp, serverNow, SPLASH_MIN_MS, syncClock } from '../public/js/util.js';
+import { etaText } from '../public/js/queue-text.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
@@ -517,5 +518,24 @@ describe('customer texts', async () => {
   test('cleaning: known keys, trimmed, not empty, not the default', () => {
     assert.deepEqual(cleanTexts({ order_label: '  رقمك  ', ready_title: 'طلبك جاهز', x: 'y', note_hint: '' }).texts, { order_label: 'رقمك' });
     assert.equal(cleanTexts({ order_label: 'x'.repeat(161) }).field, 'order_label');
+  });
+});
+
+describe('a device clock that is off', () => {
+  test('ages and waits count on the server’s clock once it is known', () => {
+    const real = Date.now();
+    // The server says it is 2 hours earlier than this device thinks (a cashier PC set wrong).
+    syncClock(real - 2 * 3600_000);
+    try {
+      assert.ok(Math.abs(serverNow() - (real - 2 * 3600_000)) < 1000);
+      const justNow = real - 2 * 3600_000;
+      assert.equal(elapsedLabel(justNow), 'دلوقتي', 'a new order is new, not 2 hours old');
+      assert.equal(elapsedLabel(justNow - 5 * 60_000), 'من 5 د');
+      assert.match(etaText({ lowAt: justNow + 5 * 60_000, highAt: justNow + 8 * 60_000 }), /5.8/);
+      syncClock(undefined); // no server time: the last known offset stays
+      assert.ok(Math.abs(serverNow() - (real - 2 * 3600_000)) < 1000);
+    } finally {
+      syncClock(Date.now());
+    }
   });
 });

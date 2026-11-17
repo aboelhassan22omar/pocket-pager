@@ -65,7 +65,18 @@ describe('vault and automatic trash', () => {
     assert.notEqual(sealed, seal('secret-a', '4821'), 'random IV');
     assert.equal(unseal('secret-a', sealed), '4821');
     assert.equal(unseal('secret-b', sealed), null);
-    assert.equal(unseal('secret-a', `${sealed.slice(0, -2)}xx`), null, 'tampered');
+    // Tampered: the tag's first character changed (always a different byte; the last one
+    // carries spare bits and could decode the same).
+    const [v, iv, body, tag] = sealed.split('.');
+    const other = tag[0] === 'A' ? 'B' : 'A';
+    assert.equal(unseal('secret-a', [v, iv, body, other + tag.slice(1)].join('.')), null, 'tampered');
+    assert.equal(unseal('secret-a', [v, iv, body, tag.slice(0, 6)].join('.')), null, 'a cut-down tag');
+    for (let i = 0; i < 300; i++) {
+      const s2 = seal('secret-a', String(i));
+      const parts = s2.split('.');
+      parts[2] = (parts[2][0] === 'A' ? 'B' : 'A') + parts[2].slice(1);
+      assert.equal(unseal('secret-a', parts.join('.')), null);
+    }
     assert.equal(unseal('secret-a', null), null);
   });
 

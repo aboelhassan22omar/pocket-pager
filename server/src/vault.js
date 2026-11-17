@@ -22,7 +22,8 @@ export function unseal(secret, sealed) {
   const [prefix, iv, body, tag] = sealed.split('.');
   if (prefix !== PREFIX || !iv || body === undefined || !tag) return null;
   try {
-    const decipher = crypto.createDecipheriv('aes-256-gcm', deriveKey(secret, KEY_INFO), Buffer.from(iv, 'base64url'));
+    // The full 16-byte tag only: Node would accept a cut-down one (a far weaker check).
+    const decipher = crypto.createDecipheriv('aes-256-gcm', deriveKey(secret, KEY_INFO), Buffer.from(iv, 'base64url'), { authTagLength: 16 });
     decipher.setAuthTag(Buffer.from(tag, 'base64url'));
     return Buffer.concat([decipher.update(Buffer.from(body, 'base64url')), decipher.final()]).toString('utf8');
   } catch {

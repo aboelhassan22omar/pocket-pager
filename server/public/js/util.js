@@ -102,11 +102,19 @@ export function isIOS(nav) {
   return /iP(hone|ad|od)/.test(nav.userAgent) || (nav.platform === 'MacIntel' && nav.maxTouchPoints > 1);
 }
 
-export function minutesSince(ts, now = Date.now()) {
+// The device's clock can be minutes off (a cashier PC never synced, a phone set by hand): every
+// "how long ago" and "late" counts on the server's clock, learnt from its replies.
+let clockOffset = 0;
+export const serverNow = () => Date.now() + clockOffset;
+export function syncClock(serverTime) {
+  if (Number.isFinite(serverTime)) clockOffset = serverTime - Date.now();
+}
+
+export function minutesSince(ts, now = serverNow()) {
   return Math.max(0, Math.floor((now - ts) / 60000));
 }
 
-export function elapsedLabel(ts, now = Date.now()) {
+export function elapsedLabel(ts, now = serverNow()) {
   const m = minutesSince(ts, now);
   if (m < 1) return 'دلوقتي';
   if (m < 60) return `من ${m} د`;

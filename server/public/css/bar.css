@@ -128,8 +128,15 @@
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  /* minmax(0, …): a long line on a tile (a delivery's phone) never widens its column. */
+  grid-template-columns: repeat(auto-fill, minmax(min(132px, 100%), 1fr));
   gap: 12px;
+}
+
+.grid > .tile {
+  min-width: 0;
+  /* Its own column never grows past the tile: long lines wrap or end in "…". */
+  grid-template-columns: minmax(0, 1fr);
 }
 
 @media (min-width: 768px) {
@@ -191,6 +198,19 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* A long driver's name ends in "…" instead of running over the time. */
+.tile-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tile-foot > :last-child {
+  flex: none;
 }
 
 .tile-status .icon {
@@ -382,8 +402,10 @@
 
 .tile-type {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 5px;
+  gap: 2px 5px;
+  min-width: 0;
   color: var(--muted);
   font-size: var(--fs-sm);
   font-weight: 600;

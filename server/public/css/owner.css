@@ -134,7 +134,9 @@
 
 .renewals-due {
   grid-column: 1 / -1;
+  min-width: 0;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   padding: 12px 14px;
   border: 1px solid color-mix(in srgb, var(--danger) 55%, transparent);
@@ -144,6 +146,8 @@
 
 .renewals-due ul {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   gap: 4px;
   margin: 0;
   padding: 0;

@@ -82,6 +82,15 @@ export async function buildApp(config) {
     reply.header('permissions-policy', 'camera=(), microphone=(), geolocation=()');
   });
 
+  // A JSON body is an object: anything else ("x", 1, true, [], null) is turned away here, so no
+  // route trips over it. The POS link reads whatever its system sends (routes/pos.js).
+  app.addHook('preHandler', async (req) => {
+    if (req.body === undefined || req.url.startsWith('/api/pos/')) return;
+    if (!String(req.headers['content-type'] ?? '').startsWith('application/json')) return;
+    const b = req.body;
+    if (b === null || typeof b !== 'object' || Array.isArray(b)) throw new HttpError(400, 'الطلب ده مش مظبوط');
+  });
+
   app.setErrorHandler((err, req, reply) => {
     if (err instanceof HttpError) {
       return reply.code(err.status).send({ error: err.message, ...err.extra });

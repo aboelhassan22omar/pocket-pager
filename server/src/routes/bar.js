@@ -12,7 +12,7 @@ import { randomId } from '../util.js';
 import { DEMO_LOCKED, isDemo } from '../demo.js';
 import { createRateLimiter } from '../ratelimit.js';
 import { openSse } from '../sse.js';
-import { newStaticKey, QR_MODES } from '../store.js';
+import { newStaticKey, QR_MODES, SHOP_ID_RE } from '../store.js';
 import { appleStatus, barOrder, barShop, orderUrl, qrInfo } from '../views.js';
 import { buildId } from '../build.js';
 
@@ -109,7 +109,8 @@ export default async function barRoutes(app, deps) {
   });
 
   app.post('/api/bar/:shop/logout', async (req, reply) => {
-    reply.clearCookie(staffCookieName(req.params.shop), { path: '/' });
+    // Only a real branch id becomes a cookie name (a stray character would crash the reply).
+    if (SHOP_ID_RE.test(req.params.shop)) reply.clearCookie(staffCookieName(req.params.shop), { path: '/' });
     return { ok: true };
   });
 
@@ -131,8 +132,9 @@ export default async function barRoutes(app, deps) {
       const shop = req.shop;
       return {
         shop: barShop(shop),
-        // Delivery: the branch's drivers, for «خرج للتوصيل».
-        drivers: shop.delivery ? req.ctx.store.listDrivers().map(driverView) : [],
+        // Delivery: the branch's drivers, for «خرج للتوصيل». Also with delivery just turned off:
+        // the delivery orders still open must be able to leave.
+        drivers: req.ctx.store.listDrivers().map(driverView),
         orders: req.ctx.store.openOrders().map((o) => barView(o, shop)),
         qr: qrInfo(shop, config),
         apple: appleStatus(config, notifier.apnsReady),

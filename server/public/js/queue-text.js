@@ -2,6 +2,7 @@
 // reworded by the brand, see texts.js). The ETA arrives as absolute times and counts down
 // locally (no polling).
 import { t } from './texts.js';
+import { serverNow } from './util.js';
 
 export function aheadText(n) {
   if (n === 0) return t('ahead_next');
@@ -10,7 +11,7 @@ export function aheadText(n) {
   return t('ahead_many', { n });
 }
 
-export function etaText(eta, now = Date.now()) {
+export function etaText(eta, now = serverNow()) {
   if (!eta) return '';
   const high = Math.ceil((eta.highAt - now) / 60_000);
   if (high <= 0) return t('eta_soon');
