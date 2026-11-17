@@ -191,6 +191,58 @@ export const BRANCH_MIGRATIONS = [
   `
   ALTER TABLE branch_settings ADD COLUMN loyalty_product TEXT;
   `,
+  // 15: delivery by the restaurant's own drivers. orders is rebuilt for its new status
+  //     out_for_delivery (a CHECK can't change in place); every existing order is 'pickup'.
+  //     The driver's name and phone are copied onto the order when it leaves, so editing or
+  //     deleting the driver never changes an order on its way. customer_phone: the delivery
+  //     customer's mobile (2010xxxxxxxx), cleared when the order closes.
+  {
+    rebuilds: ['orders'],
+    referrers: ['subscriptions', 'feedback'],
+    sql: `
+  CREATE TABLE orders_new (
+    id TEXT PRIMARY KEY,
+    number INTEGER NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('preparing', 'ready', 'out_for_delivery', 'picked', 'expired', 'cancelled')),
+    created_at INTEGER NOT NULL,
+    ready_at INTEGER,
+    closed_at INTEGER,
+    notify_count INTEGER NOT NULL DEFAULT 0,
+    review_clicked_at INTEGER,
+    device_hash TEXT,
+    stamped INTEGER NOT NULL DEFAULT 0,
+    reward_id INTEGER,
+    ref TEXT,
+    viewer TEXT,
+    rev INTEGER NOT NULL DEFAULT 0,
+    receipt TEXT,
+    order_type TEXT NOT NULL DEFAULT 'pickup' CHECK (order_type IN ('pickup', 'delivery')),
+    customer_phone TEXT,
+    driver_id INTEGER,
+    driver_name TEXT,
+    driver_phone TEXT,
+    out_at INTEGER
+  );
+  INSERT INTO orders_new (id, number, status, created_at, ready_at, closed_at, notify_count, review_clicked_at,
+                          device_hash, stamped, reward_id, ref, viewer, rev, receipt)
+    SELECT id, number, status, created_at, ready_at, closed_at, notify_count, review_clicked_at,
+           device_hash, stamped, reward_id, ref, viewer, rev, receipt FROM orders;
+  DROP TABLE orders;
+  ALTER TABLE orders_new RENAME TO orders;
+  CREATE INDEX orders_status ON orders (status);
+  CREATE INDEX orders_closed_at ON orders (closed_at);
+  CREATE INDEX orders_created_at ON orders (created_at);
+  CREATE TABLE drivers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    phone TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    deleted_at INTEGER
+  );
+  ALTER TABLE branch_settings ADD COLUMN delivery INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE branch_settings ADD COLUMN delivery_close_minutes INTEGER NOT NULL DEFAULT 60;
+  `,
+  },
 ];
 
 export function openBranchDb(file, { backupFile } = {}) {

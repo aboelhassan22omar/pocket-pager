@@ -1,5 +1,6 @@
 // Pocket Pager service worker: ONE notification per order (tag order-<id>).
 // preparing -> silent, ready -> sound + vibration, closed -> notification removed.
+// Delivery: out for delivery -> one sound and a short vibration (the customer is at home).
 
 const CLOSED = ['picked', 'expired', 'cancelled'];
 
@@ -8,19 +9,23 @@ self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim(
 
 function notificationFor(data) {
   const ready = data.status === 'ready';
+  const onTheWay = data.status === 'out_for_delivery';
   const options = {
     tag: `order-${data.orderId}`,
     requireInteraction: true,
-    renotify: ready,
-    silent: !ready,
+    renotify: ready || onTheWay,
+    silent: !ready && !onTheWay,
     body: data.message,
     dir: 'rtl',
     lang: 'ar',
     data: { url: `/s/${encodeURIComponent(data.shopId)}?o=${encodeURIComponent(data.orderId)}` },
   };
   if (ready) options.vibrate = [500, 200, 500, 200, 900];
+  if (onTheWay) options.vibrate = [300, 150, 300];
   if (data.icon) options.icon = data.icon;
-  const title = ready ? `طلبك رقم ${data.number} جاهز` : `${data.shopName}: طلب رقم ${data.number}`;
+  let title = `${data.shopName}: طلب رقم ${data.number}`;
+  if (ready) title = `طلبك رقم ${data.number} جاهز`;
+  if (onTheWay) title = `طلبك رقم ${data.number} في الطريق`;
   return { title, options };
 }
 

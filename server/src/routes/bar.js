@@ -4,6 +4,7 @@ import QRCode from 'qrcode';
 import { pinFields, PIN_RE, verifyPin } from '../auth.js';
 import { channels } from '../bus.js';
 import { staffCookieName } from '../cookies.js';
+import { egyptMobile, localMobile } from '../contact.js';
 import { canClaim, planView } from '../plans.js';
 import { deviceFromRequest, setStaffSession, verifyStaffSession } from '../sessions.js';
 import { HttpError } from '../errors.js';
@@ -12,7 +13,7 @@ import { DEMO_LOCKED, isDemo } from '../demo.js';
 import { createRateLimiter } from '../ratelimit.js';
 import { openSse } from '../sse.js';
 import { newStaticKey, QR_MODES } from '../store.js';
-import { appleStatus, barShop, orderUrl, publicOrder, qrInfo } from '../views.js';
+import { appleStatus, barOrder, barShop, orderUrl, qrInfo } from '../views.js';
 import { buildId } from '../build.js';
 
 const STATUS_TARGETS = ['preparing', 'ready', 'picked', 'cancelled'];
@@ -63,6 +64,9 @@ function integer(body, key, min, max) {
 
 export default async function barRoutes(app, deps) {
   const { config, control, tenants, bus, notifier, service, screens } = deps;
+  // The cashier's view of an order (a delivery's customer mobile and link included).
+  const barView = (order, shop) => barOrder(order, shop, config);
+  const driverView = (d) => ({ id: d.id, name: d.name, phone: localMobile(d.phone) });
   const loginLimiter = createRateLimiter({ limit: config.loginRatePerMin });
   app.addHook('onClose', async () => loginLimiter.close());
 
@@ -127,7 +131,9 @@ export default async function barRoutes(app, deps) {
       const shop = req.shop;
       return {
         shop: barShop(shop),
-        orders: req.ctx.store.openOrders().map((o) => publicOrder(o, shop)),
+        // Delivery: the branch's drivers, for «خرج للتوصيل».
+        drivers: shop.delivery ? req.ctx.store.listDrivers().map(driverView) : [],
+        orders: req.ctx.store.openOrders().map((o) => barView(o, shop)),
         qr: qrInfo(shop, config),
         apple: appleStatus(config, notifier.apnsReady),
         plan: planView(req.ctx.branch),
@@ -194,11 +200,25 @@ export default async function barRoutes(app, deps) {
 
     // +1 / -1 on the count: an order outside the pager (delivery), or a mistake.
     // Order QR mode: the cashier rings an order up; the customer screen shows its QR.
+    // { type: 'delivery', phone }: a delivery order for that mobile (the link goes on WhatsApp).
     bar.post('/orders', async (req) => {
-      if (!req.shop.order_qr) throw new HttpError(409, 'كود لكل طلب مش متفعّل للفرع ده');
+      const delivery = req.body?.type === 'delivery';
+      if (delivery && !req.shop.delivery) throw new HttpError(409, 'التوصيل مش متفعّل للفرع ده');
+      if (!delivery && !req.shop.order_qr) throw new HttpError(409, 'كود لكل طلب مش متفعّل للفرع ده');
       if (!canClaim(req.ctx.branch)) throw new HttpError(402, 'الفرع متوقف. جدّد الاشتراك عشان ياخد طلبات');
-      const { order, shop } = service.createOrder(req.ctx);
-      return publicOrder(order, shop);
+      const { order, shop } = delivery
+        ? service.createDelivery(req.ctx, egyptMobile(req.body?.phone, 'phone'))
+        : service.createOrder(req.ctx);
+      return barView(order, shop);
+    });
+
+    // «خرج للتوصيل»: the order leaves with one of this branch's drivers.
+    bar.post('/orders/:id/dispatch', async (req) => {
+      const order = shopOrder(req);
+      sameAsSeen(req, order);
+      const driver = req.ctx.store.getDriver(Number(req.body?.driverId));
+      if (!driver) throw invalid('driverId', 'اختار مندوب من القايمة');
+      return barView(service.dispatch(req.ctx, req.shop, order, driver, { product: req.body?.product === true }), req.shop);
     });
 
     // Takeaway numbers typed by the cashier: the receipt's number in, the takeaway number out.
@@ -243,14 +263,14 @@ export default async function barRoutes(app, deps) {
     function sameAsSeen(req, order) {
       const from = req.body?.from;
       if (from != null && from !== order.status) {
-        throw new HttpError(409, `رقم ${order.ref ?? order.number} اتغيّر من شاشة تانية`, { order: publicOrder(order, req.shop) });
+        throw new HttpError(409, `رقم ${order.ref ?? order.number} اتغيّر من شاشة تانية`, { order: barView(order, req.shop) });
       }
     }
 
     bar.post('/orders/:id/advance', async (req) => {
       const order = shopOrder(req);
       sameAsSeen(req, order);
-      return publicOrder(service.advance(req.ctx, req.shop, order, { product: req.body?.product === true }), req.shop);
+      return barView(service.advance(req.ctx, req.shop, order, { product: req.body?.product === true }), req.shop);
     });
 
     bar.post('/orders/:id/status', async (req) => {
@@ -258,13 +278,13 @@ export default async function barRoutes(app, deps) {
       if (!STATUS_TARGETS.includes(status)) throw invalid('status', 'الحالة دي مش معروفة');
       const order = shopOrder(req);
       sameAsSeen(req, order);
-      return publicOrder(service.setStatus(req.ctx, req.shop, order, status, { product: req.body?.product === true }), req.shop);
+      return barView(service.setStatus(req.ctx, req.shop, order, status, { product: req.body?.product === true }), req.shop);
     });
 
-    bar.post('/orders/:id/renotify', async (req) => publicOrder(service.renotify(req.ctx, req.shop, shopOrder(req)), req.shop));
+    bar.post('/orders/:id/renotify', async (req) => barView(service.renotify(req.ctx, req.shop, shopOrder(req)), req.shop));
 
     // Loyalty: staff confirm they gave the customer the reward attached to this order.
-    bar.post('/orders/:id/redeem', async (req) => publicOrder(service.redeem(req.ctx, req.shop, shopOrder(req)), req.shop));
+    bar.post('/orders/:id/redeem', async (req) => barView(service.redeem(req.ctx, req.shop, shopOrder(req)), req.shop));
 
     bar.post('/settings', async (req, reply) => {
       const body = req.body ?? {};

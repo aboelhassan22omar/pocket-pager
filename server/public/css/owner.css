@@ -396,3 +396,15 @@
 .ring-upload p {
   margin: 0;
 }
+
+/* The branch's delivery drivers (owner dashboard). */
+.driver-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.driver-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2, var(--surface));
+}
+.driver-who { display: grid; gap: 2px; min-width: 0; }
+.driver-who strong { overflow-wrap: anywhere; }
+.driver-who .num { color: var(--muted); font-size: 0.9rem; text-align: start; }
+.driver-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.driver-empty { padding: 4px 0; }

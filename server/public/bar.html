@@ -45,6 +45,7 @@
         </div>
         <button class="btn count-btn" id="count-minus" type="button" aria-label="ارجع رقم لورا">−</button>
       </section>
+      <button class="btn btn-block new-delivery" id="new-delivery" type="button" hidden><span id="new-delivery-icon" aria-hidden="true"></span>توصيل جديد</button>
       <p class="board-meta" id="board-meta"></p>
       <div id="grid" class="grid" role="list"></div>
       <div id="empty" class="empty" hidden>
@@ -53,11 +54,46 @@
       </div>
       <label class="late-chime"><input type="checkbox" id="late-chime"> صوت لما طلب يتأخر (على الشاشة دي بس)</label>
       <p class="help muted">دوسة واحدة: الطلب جاهز وبيرن عند العميل. دوسة تانية: اتسلّم. دوسة طويلة: اختيارات أكتر.</p>
+      <p class="help muted" id="delivery-help" hidden>توصيل: دوسة على طلب التوصيل تختار المندوب وتخرّجه، ودوسة تانية لما يوصل (وبيتقفل لوحده بعد شوية لو نسيت).</p>
       <p class="help muted" id="manual-help" hidden>تيكاواي: اكتب رقم الفاتورة ودوس «ضيف»، وأول عميل يعمل سكان بعدها بياخد رقمها على طول، وبيشوف رقم الفاتورة تحته. لو فاتورة اتلغت أو اتكتبت غلط: اكتب رقمها ودوس «الغي الفاتورة».</p>
       <p class="help muted" id="count-help">طلعت طلب ديليفري أو طلب مش هيعمل سكان؟ دوس + عشان العد يفضل زي السيستم. دوس − لو عدّيت رقم بالغلط.</p>
     </main>
   </div>
 
+  <div id="delivery-sheet" class="sheet-backdrop" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="delivery-title">
+      <h2 id="delivery-title">طلب توصيل جديد</h2>
+      <form id="delivery-form" novalidate autocomplete="off">
+        <p class="muted">اكتب موبايل العميل. هيوصله لينك يتابع منه الطلب لحد ما يوصله.</p>
+        <label class="field" for="delivery-phone"><span>موبايل العميل</span>
+          <input class="input num" id="delivery-phone" name="phone" type="tel" inputmode="tel" dir="ltr" maxlength="20" placeholder="01012345678" enterkeyhint="done"></label>
+        <p class="form-error" id="delivery-error" hidden></p>
+        <div class="sheet-actions">
+          <button class="btn btn-primary btn-block" type="submit">اعمل الطلب</button>
+          <button class="btn btn-quiet btn-block" type="button" data-close>رجوع</button>
+        </div>
+      </form>
+      <div id="delivery-done" hidden>
+        <p class="muted" id="delivery-done-text"></p>
+        <div class="sheet-actions">
+          <a class="btn btn-primary btn-block" id="delivery-wa" target="_blank" rel="noopener"></a>
+          <button class="btn btn-quiet btn-block" type="button" data-close>تمام</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="dispatch-sheet" class="sheet-backdrop" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="dispatch-title">
+      <h2 id="dispatch-title"></h2>
+      <p class="muted" id="dispatch-sub"></p>
+      <label class="field" for="dispatch-driver" id="dispatch-field"><span>المندوب</span><select class="input" id="dispatch-driver"></select></label>
+      <p class="form-error" id="dispatch-error" hidden></p>
+      <div class="sheet-actions">
+        <button class="btn btn-primary btn-block" id="dispatch-go" type="button"></button>
+        <button class="btn btn-quiet btn-block" type="button" data-close>رجوع</button>
+      </div>
+    </div>
+  </div>
   <div id="stamp-sheet" class="sheet-backdrop" hidden>
     <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="stamp-title">
       <h2 id="stamp-title"></h2>
@@ -75,6 +111,8 @@
       <p class="muted" id="sheet-sub"></p>
       <div class="sheet-actions">
         <button class="btn btn-primary btn-block" data-act="redeem" type="button" hidden></button>
+        <button class="btn btn-primary btn-block" data-act="dispatch" type="button" hidden></button>
+        <button class="btn btn-block" data-act="whatsapp" type="button" hidden></button>
         <button class="btn btn-block" data-act="renotify" type="button"></button>
         <button class="btn btn-block" data-act="preparing" type="button"></button>
         <button class="btn btn-block" data-act="picked" type="button"></button>

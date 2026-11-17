@@ -10,7 +10,7 @@ import { api, base64UrlToBytes, elapsedLabel, esc, isIOS, shopIdFromPath, sleep,
 import { keepAwake, releaseAwake } from './wakelock.js';
 
 const CLOSED = ['picked', 'expired', 'cancelled'];
-const STATUS_ICON = { preparing: 'clock', ready: 'check', picked: 'check', expired: 'cross', cancelled: 'cross' };
+const STATUS_ICON = { preparing: 'clock', ready: 'check', out_for_delivery: 'check', picked: 'check', expired: 'cross', cancelled: 'cross' };
 const RING_EVERY_MS = 2600;
 const POLL_MS = 10_000;
 // POS-only branches: how long the page waits for the cashier's system to send this order.
@@ -154,7 +154,8 @@ function render() {
   // Takeaway numbers typed by the cashier: the receipt it was given for, under the number.
   $('card-receipt').hidden = !order.receipt;
   $('card-receipt').textContent = order.receipt ? `فاتورة ${order.receipt}` : '';
-  $('card-message').textContent = order.status === 'picked' ? t('msg_picked') : order.message;
+  const delivered = order.status === 'picked' && order.type === 'delivery';
+  $('card-message').textContent = order.status === 'picked' ? t(delivered ? 'msg_delivered' : 'msg_picked') : order.message;
   $('card-icon').innerHTML = icons[STATUS_ICON[order.status] ?? 'clock'](20);
   $('card-when').textContent = elapsedLabel(order.createdAt);
   document.title = `طلب ${label(order)} — ${order.shopName}`;
@@ -164,6 +165,7 @@ function render() {
   $('ios-hint').hidden = closed || order.status === 'ready' || !isIOS(navigator) || isStandalone();
   $('share').hidden = closed || order.status === 'ready' || !shop?.orderShare;
   renderPushHint();
+  renderDriver();
   renderReview();
   renderNote();
   renderQueue();
@@ -173,6 +175,17 @@ function render() {
   if (order.status === 'ready') showReady();
   else hideReady();
   renderLockScreen();
+}
+
+// Delivery: who is bringing it and a button to call them, only while it is on its way.
+function renderDriver() {
+  const driver = order.status === 'out_for_delivery' ? order.driver : null;
+  $('card-driver').hidden = !driver;
+  if (!driver) return;
+  $('call-icon').innerHTML = icons.call(20);
+  const tel = driver.tel ?? driver.phone;
+  $('call-driver').hidden = !tel;
+  if (tel) $('call-driver').href = `tel:${tel}`;
 }
 
 // The lock screen shows the order (as the alarm stream's "now playing").
@@ -192,6 +205,8 @@ const ringDue = () => order?.status === 'ready' && order.notifyCount > Number(st
 /** The alarm stream for this order: rings with the screen locked too. Needs a tap behind it. */
 function armAlarm() {
   if (!order || CLOSED.includes(order.status)) return;
+  // Delivery: the customer is at home; one notification when it leaves, no alarm stream.
+  if (order.type === 'delivery') return;
   alarm.start(`${branchApi}/orders/${encodeURIComponent(order.id)}`, ringDue);
   renderLockScreen();
 }
@@ -355,8 +370,14 @@ function acknowledge() {
 
 function apply(next) {
   const wasOpen = order && !CLOSED.includes(order.status);
+  const leaving = order && order.status !== 'out_for_delivery' && next.status === 'out_for_delivery';
   order = next;
   render();
+  // On its way: one chime and a short buzz (the push notification does it with the screen off).
+  if (leaving) {
+    chime.play('ready');
+    navigator.vibrate?.([300, 150, 300]);
+  }
   if (CLOSED.includes(order.status)) {
     // The stream closes here, so the pickup stamp is fetched rather than awaited as an event.
     if (wasOpen && order.status === 'picked') loadLoyalty();
@@ -646,7 +667,7 @@ function renderOthers() {
   $('others').hidden = !list.length;
   $('others').innerHTML = list.length
     ? `<span>${esc(t('other_orders'))}</span>${list.map((o) => `<button class="other-chip" type="button" data-other="${esc(o.id)}">
-        <span class="num">${esc(label(o))}</span> ${o.status === 'ready' ? 'جاهز' : 'بيتحضّر'}</button>`).join('')}`
+        <span class="num">${esc(label(o))}</span> ${{ ready: 'جاهز', out_for_delivery: 'في الطريق' }[o.status] ?? 'بيتحضّر'}</button>`).join('')}`
     : '';
 }
 
@@ -666,7 +687,7 @@ function addOther(o) {
   entry.events.addEventListener('order', (e) => {
     entry.order = JSON.parse(e.data);
     if (CLOSED.includes(entry.order.status)) dropOther(o.id);
-    else if (entry.order.status === 'ready') switchTo(o.id);
+    else if (entry.order.status === 'ready' || entry.order.status === 'out_for_delivery') switchTo(o.id);
     else renderOthers();
   });
   entry.events.addEventListener('renotify', (e) => {
