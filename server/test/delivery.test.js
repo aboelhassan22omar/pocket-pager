@@ -218,6 +218,33 @@ describe('delivery over HTTP', () => {
     assert.deepEqual([gone.status, gone.driver], ['cancelled', null]);
   });
 
+  test('stamp card: the customer who opened the link gets the stamp when the order leaves, once', async () => {
+    await owners.dlva.post('/api/brand/dlva/branches/dlva-a/settings', { loyaltyEvery: 3, loyaltyRewardText: 'كشري ببلاش', features: { loyalty: true } });
+    const driver = (await bar.get('/api/bar/dlva-a/state')).data.drivers[0];
+    const o = await newDelivery();
+    const customer = client(server.url);
+    assert.equal((await customer.post(`/api/b/dlva-a/orders/${o.id}/join`, {})).status, 200);
+    const stamps = async () => (await customer.get('/api/b/dlva-a/loyalty')).data.stamps;
+    assert.equal(await stamps(), 0);
+    await bar.post(`${orders('dlva-a')}/${o.id}/dispatch`, { driverId: driver.id });
+    assert.equal(await stamps(), 1, 'when it leaves');
+    await bar.post(`${orders('dlva-a')}/${o.id}/advance`, {});
+    assert.equal(await stamps(), 1, 'not again when it arrives');
+
+    // On one product: only when the cashier says the order has it.
+    await owners.dlva.post('/api/brand/dlva/branches/dlva-a/settings', { loyaltyProduct: 'كشري كبير' });
+    const without = await newDelivery();
+    await customer.post(`/api/b/dlva-a/orders/${without.id}/join`, {});
+    await bar.post(`${orders('dlva-a')}/${without.id}/dispatch`, { driverId: driver.id });
+    await bar.post(`${orders('dlva-a')}/${without.id}/advance`, {});
+    assert.equal(await stamps(), 1, 'no');
+    const withIt = await newDelivery();
+    await customer.post(`/api/b/dlva-a/orders/${withIt.id}/join`, {});
+    await bar.post(`${orders('dlva-a')}/${withIt.id}/dispatch`, { driverId: driver.id, product: true });
+    assert.equal(await stamps(), 2, 'yes');
+    await owners.dlva.post('/api/brand/dlva/branches/dlva-a/settings', { loyaltyProduct: '', features: { loyalty: false } });
+  });
+
   test('pickup is as before: ready then picked, nothing of delivery on it', async () => {
     const k = new URL((await bar.get('/api/bar/dlva-a/state')).data.qr.staticUrl).searchParams.get('k');
     const o = (await client(server.url).post('/api/b/dlva-a/claim', { k })).data;
