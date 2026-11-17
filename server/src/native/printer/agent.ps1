@@ -6,7 +6,7 @@
 # as a scheduled task (every minute: a second copy exits at once while this one listens).
 
 $ErrorActionPreference = 'Stop'
-$Dir = Join-Path $env:ProgramData 'SmartPagerPrint'
+$Dir = Join-Path $env:ProgramData 'PocketPagerPrint'
 if ($env:SP_PRINT_DIR) { $Dir = $env:SP_PRINT_DIR }
 $Config = Get-Content (Join-Path $Dir 'config.json') -Raw | ConvertFrom-Json
 $LogFile = Join-Path $Dir 'agent.log'
@@ -22,7 +22,7 @@ function Log([string]$Message) {
 Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
-public static class SmartPagerRaw {
+public static class PocketPagerRaw {
   [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
   public class DocInfo { public string Name; public string OutputFile; public string DataType; }
   [DllImport("winspool.drv", EntryPoint = "OpenPrinterW", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -51,7 +51,7 @@ public static class SmartPagerRaw {
 
 function Send-Job([byte[]]$Bytes) {
   if ($Config.sinkFile) { [IO.File]::WriteAllBytes($Config.sinkFile, $Bytes); return }
-  [SmartPagerRaw]::Send($Config.direct, $Bytes)
+  [PocketPagerRaw]::Send($Config.direct, $Bytes)
 }
 
 # Where the QR goes: before the last paper cut (GS V, ESC i, ESC m) near the end, else at the end.

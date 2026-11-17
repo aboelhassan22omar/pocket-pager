@@ -412,10 +412,10 @@ node src/cli.js hash-password <password>                          # لـ SUPER_P
    ssh-copy-id -i deploy_key.pub deploy@SERVER_IP
    ```
    محتوى `deploy_key` هيبقى قيمة الـ secret اللي اسمه `SSH_PRIVATE_KEY`.
-4. **مجلد التشغيل وملف `.env`** على السيرفر:
+4. **مجلد التشغيل وملف `.env`** على السيرفر (السيرفر الشغال حاليًا فاضل في `/opt/smart-pager`، اسمه القديم: متنقلوش، لأن Docker بيسمّي volume البيانات على اسم المجلد، ولو اتنقل هيبدأ بداتا فاضية):
    ```bash
-   sudo mkdir -p /opt/smart-pager/secrets && sudo chown -R deploy: /opt/smart-pager
-   cd /opt/smart-pager
+   sudo mkdir -p /opt/pocket-pager/secrets && sudo chown -R deploy: /opt/pocket-pager
+   cd /opt/pocket-pager
    # انسخ .env.example من المستودع لـ .env وعدّل DOMAIN و PUBLIC_URL و ADMIN_TOKEN
    nano .env
    ```
@@ -428,7 +428,7 @@ node src/cli.js hash-password <password>                          # لـ SUPER_P
 من جوه الحاوية على السيرفر:
 
 ```bash
-cd /opt/smart-pager
+cd /opt/pocket-pager
 docker compose exec app node src/cli.js create cafe-zamalek "كافيه الزمالك" 4821
 ```
 
@@ -545,7 +545,7 @@ curl -X POST https://pager.example.com/api/admin/branches -H "x-admin-token: $AD
   | الاسم | القيمة |
   |---|---|
   | `PUBLIC_URL` | `https://pager.example.com` |
-  | `DEPLOY_PATH` | `/opt/smart-pager` |
+  | `DEPLOY_PATH` | `/opt/pocket-pager` |
 
 - **Repository variable** (من **Settings ← Secrets and variables ← Actions ← Variables**): لازم تحط `DEPLOY_PATH` هنا كمان بنفس القيمة. ده عشان شرط تشغيل مرحلة النشر بيتقيّم قبل ما الـ job يدخل الـ environment، فمش بيشوف متغيرات الـ environment.
 
@@ -589,7 +589,7 @@ curl -X POST https://pager.example.com/api/admin/branches -H "x-admin-token: $AD
    - `cc.aurexis.pager` (App) وفعّل Associated Domains و Push Notifications.
    - `cc.aurexis.pager.Clip` (App Clip) وفعّل نفس القدرات.
    - `cc.aurexis.pager.Widget` و `cc.aurexis.pager.Clip.Widget`.
-3. **مفتاح APNs:** من Keys اعمل مفتاح جديد فيه *Apple Push Notifications service* ونزّل `AuthKey_XXXXXX.p8`. حطّه على السيرفر في `/opt/smart-pager/secrets/AuthKey.p8`.
+3. **مفتاح APNs:** من Keys اعمل مفتاح جديد فيه *Apple Push Notifications service* ونزّل `AuthKey_XXXXXX.p8`. حطّه على السيرفر في `/opt/pocket-pager/secrets/AuthKey.p8`.
 4. **`.env` على السيرفر:**
    ```env
    APPLE_TEAM_ID=ABCDE12345
@@ -604,10 +604,10 @@ curl -X POST https://pager.example.com/api/admin/branches -H "x-admin-token: $AD
    ```bash
    cd ios
    PAGER_DOMAIN=pager.example.com APPLE_TEAM_ID=ABCDE12345 ./generate.sh   # الدومين الافتراضي pager.aurexis.cc
-   open SmartPager.xcodeproj
+   open PocketPager.xcodeproj
    ```
 6. **App Store Connect:** ارفع التطبيق ومعاه الـ App Clip، واعمل **App Clip Experience** بالرابط `https://pager.example.com/s/`. رابط سياسة الخصوصية `https://DOMAIN/privacy`، ورابط الدعم `https://DOMAIN/support`. لما الـ App Clip يتنشر، Safari هيعرض بانر التشغيل تلقائي، لأن السيرفر بيحط `apple-itunes-app` في صفحة العميل.
-7. **التجربة:** في Xcode اختار scheme اسمه `SmartPagerClip`، وفي *Edit Scheme ← Run ← Environment* حط `_XCAppClipURL=https://pager.example.com/s/demo-cafe?k=...`.
+7. **التجربة:** في Xcode اختار scheme اسمه `PocketPagerClip`، وفي *Edit Scheme ← Run ← Environment* حط `_XCAppClipURL=https://pager.example.com/s/demo-cafe?k=...`.
 
 8. **بعد نقل التطبيق لحساب تاني (App Transfer):** الـ Team ID بيتغير. حط الجديد في `APPLE_TEAM_ID` والقديم في `APPLE_PREVIOUS_TEAM_ID` عشان النسخ اللي على موبايلات الناس تفضل تفتح الروابط، واعمل مفتاح APNs جديد من الحساب الجديد (`APNS_KEY_ID` و `AuthKey.p8`). لما الناس تحدّث، امسح `APPLE_PREVIOUS_TEAM_ID`.
 

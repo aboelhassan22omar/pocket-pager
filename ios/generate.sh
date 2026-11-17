@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Generates SmartPager.xcodeproj from project.yml.
+# Generates PocketPager.xcodeproj from project.yml.
 #   PAGER_DOMAIN   domain serving /s/{shop} (default: pager.aurexis.cc)
 #   APPLE_TEAM_ID  Apple Developer Team ID that signs the app (default: MZ737V7Y46, the uploading team;
 #                  change it after an App Store transfer)
@@ -17,4 +17,4 @@ if xcode=$(xcodebuild -version 2>/dev/null | awk 'NR==1 {print $2}') && [ -n "$x
 fi
 mkdir -p Generated
 xcodegen generate --spec project.yml
-echo "Generated SmartPager.xcodeproj for https://${PAGER_DOMAIN} (team: ${APPLE_TEAM_ID:-none})"
+echo "Generated PocketPager.xcodeproj for https://${PAGER_DOMAIN} (team: ${APPLE_TEAM_ID:-none})"

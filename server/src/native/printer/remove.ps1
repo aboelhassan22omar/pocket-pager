@@ -10,17 +10,23 @@ if (-not $me.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
   return
 }
 
-$Dir = Join-Path $env:ProgramData 'SmartPagerPrint'
+$Dir = Join-Path $env:ProgramData 'PocketPagerPrint'
 $ConfigFile = Join-Path $Dir 'config.json'
+# Installed under the product's old name (Smart Pager): remove that one.
+$OldDir = Join-Path $env:ProgramData 'SmartPagerPrint'
+$old = (-not (Test-Path $ConfigFile)) -and (Test-Path (Join-Path $OldDir 'config.json'))
+if ($old) { $Dir = $OldDir; $ConfigFile = Join-Path $Dir 'config.json' }
 if (-not (Test-Path $ConfigFile)) { Write-Host 'Pocket Pager print agent is not installed here.'; return }
 $cfg = Get-Content $ConfigFile -Raw | ConvertFrom-Json
 
 Set-Printer -Name $cfg.printer -PortName $cfg.originalPort
+Unregister-ScheduledTask -TaskName 'PocketPager Print' -Confirm:$false -ErrorAction SilentlyContinue
 Unregister-ScheduledTask -TaskName 'SmartPager Print' -Confirm:$false -ErrorAction SilentlyContinue
 Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
-  Where-Object { $_.CommandLine -like '*SmartPagerPrint*agent.ps1*' } |
+  Where-Object { $_.CommandLine -like '*PocketPagerPrint*agent.ps1*' -or $_.CommandLine -like '*SmartPagerPrint*agent.ps1*' } |
   ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 Remove-Printer -Name $cfg.direct -ErrorAction SilentlyContinue
+Remove-PrinterPort -Name 'PocketPager_9101' -ErrorAction SilentlyContinue
 Remove-PrinterPort -Name 'SmartPager_9101' -ErrorAction SilentlyContinue
 Remove-Item $Dir -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host ('Removed. "' + $cfg.printer + '" prints as before.') -ForegroundColor Green

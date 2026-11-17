@@ -179,7 +179,7 @@ jobs:
           platforms: ${{ matrix.platform }}
           push: false
           load: ${{ matrix.platform == 'linux/amd64' }}
-          tags: smart-pager:ci
+          tags: pocket-pager:ci
           cache-from: |
             type=gha,scope=${{ steps.scope.outputs.name }}
             type=gha,scope=app-release
@@ -188,7 +188,7 @@ jobs:
         if: matrix.platform == 'linux/amd64'
         run: |
           docker run -d --name pager -p 3000:3000 \
-            -e ADMIN_TOKEN=ci-token -e PUBLIC_URL=http://localhost:3000 smart-pager:ci
+            -e ADMIN_TOKEN=ci-token -e PUBLIC_URL=http://localhost:3000 pocket-pager:ci
           for _ in $(seq 1 30); do
             curl -fsS http://localhost:3000/health && break
             sleep 1
@@ -253,13 +253,13 @@ jobs:
       - name: Build app (simulator, unsigned)
         run: |
           set -o pipefail
-          xcodebuild -project SmartPager.xcodeproj -scheme SmartPager -configuration Debug \
+          xcodebuild -project PocketPager.xcodeproj -scheme PocketPager -configuration Debug \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build -quiet
       - name: Build App Clip (simulator, unsigned)
         run: |
           set -o pipefail
-          xcodebuild -project SmartPager.xcodeproj -scheme SmartPagerClip -configuration Debug \
+          xcodebuild -project PocketPager.xcodeproj -scheme PocketPagerClip -configuration Debug \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build -quiet
 

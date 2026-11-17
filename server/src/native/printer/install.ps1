@@ -10,8 +10,8 @@ $Branch = '__BRANCH__'
 $Token = '__TOKEN__'
 $Wanted = '__PRINTER__'
 $Self = $Server + '/api/pos/' + $Branch + '/' + $Token + '/printer.ps1'
-$TaskName = 'SmartPager Print'
-$PortName = 'SmartPager_9101'
+$TaskName = 'PocketPager Print'
+$PortName = 'PocketPager_9101'
 $Port = 9101
 
 $me = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
@@ -23,14 +23,25 @@ if (-not $me.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
 }
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$Dir = Join-Path $env:ProgramData 'SmartPagerPrint'
+$Dir = Join-Path $env:ProgramData 'PocketPagerPrint'
 $ConfigFile = Join-Path $Dir 'config.json'
 New-Item -ItemType Directory -Force $Dir | Out-Null
+
+# Installed under the product's old name (Smart Pager): stop that agent and carry its settings
+# over, so this run updates it under the new names (the old port and folder go at the end).
+$OldDir = Join-Path $env:ProgramData 'SmartPagerPrint'
+if ((Test-Path (Join-Path $OldDir 'config.json')) -and -not (Test-Path $ConfigFile)) {
+  Unregister-ScheduledTask -TaskName 'SmartPager Print' -Confirm:$false -ErrorAction SilentlyContinue
+  Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
+    Where-Object { $_.CommandLine -like '*SmartPagerPrint*agent.ps1*' } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+  Copy-Item (Join-Path $OldDir 'config.json') $ConfigFile
+}
 
 function Stop-Agent {
   Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
   Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
-    Where-Object { $_.CommandLine -like '*SmartPagerPrint*agent.ps1*' } |
+    Where-Object { $_.CommandLine -like '*PocketPagerPrint*agent.ps1*' } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 }
 
@@ -43,7 +54,7 @@ if (Test-Path $ConfigFile) {
   Write-Host ('Updating the agent for "' + $printer + '"')
 } else {
   $all = @(Get-Printer | Where-Object {
-      $_.Name -notmatch 'PDF|XPS|OneNote|Fax|SmartPager|Microsoft|AnyDesk|TeamViewer' -and $_.PortName -notmatch '^(PORTPROMPT|nul|FILE|SmartPager)'
+      $_.Name -notmatch 'PDF|XPS|OneNote|Fax|PocketPager|SmartPager|Microsoft|AnyDesk|TeamViewer' -and $_.PortName -notmatch '^(PORTPROMPT|nul|FILE|PocketPager|SmartPager)'
     })
   $pick = $null
   if ($Wanted) { $pick = $all | Where-Object { $_.Name -eq $Wanted } | Select-Object -First 1 }
@@ -60,7 +71,7 @@ if (Test-Path $ConfigFile) {
   }
   if (-not $pick) { throw 'No receipt printer found on this PC.' }
   $printer = $pick.Name
-  $direct = $printer + ' (SmartPager direct)'
+  $direct = $printer + ' (PocketPager direct)'
   $originalPort = $pick.PortName
   Write-Host ('Receipt printer: "' + $printer + '" on ' + $originalPort)
   # The agent sends the receipts on through this second queue, on the printer's own port.
@@ -94,6 +105,9 @@ if (-not (Get-PrinterPort -Name $PortName -ErrorAction SilentlyContinue)) {
   Add-PrinterPort -Name $PortName -PrinterHostAddress '127.0.0.1' -PortNumber $Port
 }
 Set-Printer -Name $printer -PortName $PortName
+# Left from an install under the old name.
+Remove-PrinterPort -Name 'SmartPager_9101' -ErrorAction SilentlyContinue
+Remove-Item (Join-Path $env:ProgramData 'SmartPagerPrint') -Recurse -Force -ErrorAction SilentlyContinue
 
 Write-Host ''
 Write-Host 'Done. Print a receipt from the POS: the order QR is at the bottom.' -ForegroundColor Green

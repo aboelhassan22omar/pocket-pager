@@ -1,5 +1,5 @@
-# Pocket Pager (Smart Pager) iOS — generate with ./generate.sh (sets PAGER_DOMAIN / APPLE_TEAM_ID defaults).
-name: SmartPager
+# Pocket Pager iOS — generate with ./generate.sh (sets PAGER_DOMAIN / APPLE_TEAM_ID defaults).
+name: PocketPager
 
 options:
   bundleIdPrefix: cc.aurexis
@@ -20,7 +20,7 @@ settings:
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
 
 targets:
-  SmartPager:
+  PocketPager:
     type: application
     platform: iOS
     sources:
@@ -29,7 +29,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: cc.aurexis.pager
-        PRODUCT_NAME: SmartPager
+        PRODUCT_NAME: PocketPager
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     info:
       path: Generated/App-Info.plist
@@ -50,7 +50,7 @@ targets:
         # HTTPS only (exempt): skips the export-compliance question on every upload.
         ITSAppUsesNonExemptEncryption: false
     entitlements:
-      path: Generated/SmartPager.entitlements
+      path: Generated/PocketPager.entitlements
       properties:
         # Push Notifications capability: ActivityKit only hands out Live Activity push tokens with it.
         aps-environment: development
@@ -58,10 +58,10 @@ targets:
           - "applinks:${PAGER_DOMAIN}"
           - "appclips:${PAGER_DOMAIN}"
     dependencies:
-      - target: SmartPagerClip
-      - target: SmartPagerWidget
+      - target: PocketPagerClip
+      - target: PocketPagerWidget
 
-  SmartPagerClip:
+  PocketPagerClip:
     type: application.on-demand-install-capable
     platform: iOS
     sources:
@@ -70,7 +70,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: cc.aurexis.pager.Clip
-        PRODUCT_NAME: SmartPagerClip
+        PRODUCT_NAME: PocketPagerClip
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     info:
       path: Generated/Clip-Info.plist
@@ -94,7 +94,7 @@ targets:
           NSAppClipRequestEphemeralUserNotification: true
           NSAppClipRequestLocationConfirmation: false
     entitlements:
-      path: Generated/SmartPagerClip.entitlements
+      path: Generated/PocketPagerClip.entitlements
       properties:
         com.apple.developer.on-demand-install-capable: true
         aps-environment: development
@@ -103,9 +103,9 @@ targets:
         com.apple.developer.associated-domains:
           - "appclips:${PAGER_DOMAIN}"
     dependencies:
-      - target: SmartPagerClipWidget
+      - target: PocketPagerClipWidget
 
-  SmartPagerWidget:
+  PocketPagerWidget:
     type: app-extension
     platform: iOS
     sources:
@@ -114,7 +114,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: cc.aurexis.pager.Widget
-        PRODUCT_NAME: SmartPagerWidget
+        PRODUCT_NAME: PocketPagerWidget
     info:
       path: Generated/Widget-Info.plist
       properties:
@@ -124,7 +124,7 @@ targets:
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
 
-  SmartPagerClipWidget:
+  PocketPagerClipWidget:
     type: app-extension
     platform: iOS
     sources:
@@ -133,7 +133,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: cc.aurexis.pager.Clip.Widget
-        PRODUCT_NAME: SmartPagerClipWidget
+        PRODUCT_NAME: PocketPagerClipWidget
     info:
       path: Generated/ClipWidget-Info.plist
       properties:
@@ -144,18 +144,18 @@ targets:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
 
 schemes:
-  SmartPager:
+  PocketPager:
     build:
       targets:
-        SmartPager: all
+        PocketPager: all
     run:
       config: Debug
     archive:
       config: Release
-  SmartPagerClip:
+  PocketPagerClip:
     build:
       targets:
-        SmartPagerClip: all
+        PocketPagerClip: all
     run:
       config: Debug
     archive:
