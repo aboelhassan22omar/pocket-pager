@@ -3,7 +3,11 @@ import { HttpError } from './errors.js';
 import { MAX_POS_NUMBER } from './pos.js';
 import { branchTz, businessDay, randomId, safeEqual } from './util.js';
 
-export const OPEN_STATUSES = ['preparing', 'ready'];
+export const OPEN_STATUSES = ['preparing', 'ready', 'out_for_delivery'];
+export const ORDER_TYPES = ['pickup', 'delivery'];
+// Delivery: an order on its way closes by itself after this many minutes (owner setting).
+export const DELIVERY_CLOSE_MINUTES = { min: 15, max: 240 };
+export const DRIVER_NAME_MAX = 40;
 export const CLOSED_STATUSES = ['picked', 'expired', 'cancelled'];
 export const QR_MODES = ['dynamic', 'static', 'both'];
 export const SHOP_ID_RE = /^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/;
@@ -16,7 +20,7 @@ const SETTING_COLUMNS = new Set([
   'google_place_id', 'loyalty_every', 'loyalty_reward_text', 'loyalty_product',
   'promo_text', 'promo_image', 'promo_starts_at', 'promo_ends_at',
   'pos_token', 'pos_last_event', 'theme_version', 'pos_only', 'order_qr', 'order_share',
-  'manual_numbers', 'print_agent', 'print_last', 'message_box',
+  'manual_numbers', 'print_agent', 'print_last', 'message_box', 'delivery', 'delivery_close_minutes',
 ]);
 export const FEEDBACK_WINDOW_MS = 48 * 3600 * 1000;
 // Closed orders hold no personal data and feed analytics for 90 days; push subscriptions
@@ -50,15 +54,16 @@ export class BranchStore {
       insertSettings: p(`INSERT INTO branch_settings (id, pin_hash, pin_sealed, qr_mode, qr_nonce, qr_rotated_at, static_key, created_at)
                          VALUES (1, ?, ?, ?, ?, ?, ?, ?)`),
       rotate: p('UPDATE branch_settings SET qr_prev_nonce = qr_nonce, qr_nonce = ?, qr_rotated_at = ? WHERE id = 1'),
-      openNumbers: p(`SELECT number, ref, receipt FROM orders WHERE status IN ('preparing', 'ready')`),
+      openNumbers: p(`SELECT number, ref, receipt FROM orders WHERE status IN ('preparing', 'ready', 'out_for_delivery')`),
       setCounter: p('UPDATE branch_settings SET next_number = ?, number_day = ? WHERE id = 1'),
-      insertOrder: p(`INSERT INTO orders (id, number, ref, status, created_at, receipt) VALUES (?, ?, ?, 'preparing', ?, ?)`),
+      insertOrder: p(`INSERT INTO orders (id, number, ref, status, created_at, receipt, order_type, customer_phone)
+                      VALUES (?, ?, ?, 'preparing', ?, ?, ?, ?)`),
       // Order reads carry the attached reward's state (loyalty) for the bar and customer views.
       order: p(`SELECT o.*, r.redeemed_at AS reward_redeemed_at FROM orders o
                 LEFT JOIN loyalty_rewards r ON r.id = o.reward_id WHERE o.id = ?`),
       openOrders: p(`SELECT o.*, r.redeemed_at AS reward_redeemed_at FROM orders o
                      LEFT JOIN loyalty_rewards r ON r.id = o.reward_id
-                     WHERE o.status IN ('preparing', 'ready') ORDER BY o.created_at`),
+                     WHERE o.status IN ('preparing', 'ready', 'out_for_delivery') ORDER BY o.created_at`),
       detachReward: p('UPDATE loyalty_rewards SET attached_order_id = NULL WHERE attached_order_id = ? AND redeemed_at IS NULL'),
       clearOrderReward: p('UPDATE orders SET reward_id = NULL WHERE id = ? AND reward_id IN (SELECT id FROM loyalty_rewards WHERE redeemed_at IS NULL)'),
       setStatus: p('UPDATE orders SET status = ?, ready_at = ?, closed_at = ? WHERE id = ?'),
@@ -70,6 +75,9 @@ export class BranchStore {
       insertSub: p('INSERT OR IGNORE INTO subscriptions (order_id, kind, payload, created_at) VALUES (?, ?, ?, ?)'),
       deleteSub: p('DELETE FROM subscriptions WHERE id = ?'),
       dueExpire: p(`SELECT * FROM orders WHERE status IN ('preparing', 'ready') AND created_at <= ?`),
+      dueDelivered: p(`SELECT * FROM orders WHERE status = 'out_for_delivery' AND out_at <= ?`),
+      drivers: p('SELECT id, name, phone FROM drivers WHERE deleted_at IS NULL ORDER BY name COLLATE NOCASE, id'),
+      driver: p('SELECT id, name, phone FROM drivers WHERE id = ? AND deleted_at IS NULL'),
       purge: p('DELETE FROM orders WHERE closed_at IS NOT NULL AND closed_at <= ?'),
       purgeSubs: p(`DELETE FROM subscriptions WHERE order_id IN
                     (SELECT id FROM orders WHERE closed_at IS NOT NULL AND closed_at <= ?)`),
@@ -178,7 +186,7 @@ export class BranchStore {
       const ref = fromPos?.ref ?? null;
       if (shop.pos_token || shop.manual_numbers) this.#markPos(fromPos?.key ?? ref ?? String(number), number);
       const id = randomId(16);
-      this.sql.insertOrder.run(id, number, ref, Date.now(), fromPos?.receipt ?? null);
+      this.sql.insertOrder.run(id, number, ref, Date.now(), fromPos?.receipt ?? null, 'pickup', null);
       if (deviceHash) this.#attachDevice(id, deviceHash);
       if (dynamicOk) this.sql.rotate.run(newNonce(), Date.now());
       return { order: this.sql.order.get(id), shop: this.getShop(), rotated: dynamicOk };
@@ -189,13 +197,14 @@ export class BranchStore {
    * An order rung up at the counter (order QR mode): no code to check, the customer joins it
    * by scanning its own QR. `number`/`ref` come from the POS; without them, the next number.
    */
-  createOrder({ number = null, ref = null } = {}) {
+  /** `type` 'delivery': rung up by the cashier with the customer's mobile (2010xxxxxxxx). */
+  createOrder({ number = null, ref = null, type = 'pickup', customerPhone = null } = {}) {
     return tx(this.db, () => {
       const shop = this.getShop();
       const n = number ?? this.#allocateNumber(shop);
       if (shop.pos_token) this.#markPos(ref ?? String(n), n);
       const id = randomId(16);
-      this.sql.insertOrder.run(id, n, ref, Date.now(), null);
+      this.sql.insertOrder.run(id, n, ref, Date.now(), null, type, customerPhone);
       return { order: this.sql.order.get(id), shop: this.getShop() };
     });
   }
@@ -334,7 +343,7 @@ export class BranchStore {
       let order = null;
       if (create) {
         const id = randomId(16);
-        this.sql.insertOrder.run(id, number, null, now, receipt);
+        this.sql.insertOrder.run(id, number, null, now, receipt, 'pickup', null);
         order = this.sql.order.get(id);
       }
       this.db.prepare(`INSERT INTO pos_numbers (day, ref, number, state, created_at, manual) VALUES (?, ?, ?, ?, ?, 1)`)
@@ -474,6 +483,9 @@ export class BranchStore {
     tx(this.db, () => {
       this.sql.setStatus.run(status, readyAt, closedAt, order.id);
       this.db.prepare('UPDATE orders SET rev = rev + 1 WHERE id = ?').run(order.id);
+      // Back from the road: no driver any more. Closed: the phone numbers go (personal data).
+      if (status === 'preparing') this.db.prepare('UPDATE orders SET out_at = NULL, driver_id = NULL, driver_name = NULL, driver_phone = NULL WHERE id = ?').run(order.id);
+      if (closedAt) this.db.prepare('UPDATE orders SET customer_phone = NULL, driver_phone = NULL WHERE id = ?').run(order.id);
       if (status === 'ready' && order.status !== 'ready') this.sql.bumpNotify.run(order.id);
       // Closed without redeeming: the reward goes back to the device for its next order.
       if (closedAt && order.reward_id) {
@@ -482,6 +494,49 @@ export class BranchStore {
       }
     });
     return this.sql.order.get(order.id);
+  }
+
+  /**
+   * A delivery order leaves with a driver: their name and phone are copied onto it. ready_at
+   * is when it left, so prep time and "late" count the same as for pickup.
+   */
+  dispatch(order, driver) {
+    const now = Date.now();
+    this.db.prepare(`UPDATE orders SET status = 'out_for_delivery', out_at = ?, ready_at = ?, driver_id = ?, driver_name = ?,
+                     driver_phone = ?, rev = rev + 1 WHERE id = ?`).run(now, now, driver.id, driver.name, driver.phone, order.id);
+    return this.sql.order.get(order.id);
+  }
+
+  /** Orders on their way longer than the branch's delivery time: they close as delivered. */
+  dueDelivered(now = Date.now()) {
+    const shop = this.sql.settings.get();
+    return shop ? this.sql.dueDelivered.all(now - shop.delivery_close_minutes * 60_000) : [];
+  }
+
+  // ---- drivers (this branch's own) ----
+
+  listDrivers() {
+    return this.sql.drivers.all();
+  }
+
+  /** A driver of this branch, not deleted; undefined otherwise. */
+  getDriver(id) {
+    return Number.isInteger(id) ? this.sql.driver.get(id) : undefined;
+  }
+
+  addDriver({ name, phone }) {
+    const res = this.db.prepare('INSERT INTO drivers (name, phone, created_at) VALUES (?, ?, ?)').run(name, phone, Date.now());
+    return this.getDriver(Number(res.lastInsertRowid));
+  }
+
+  updateDriver(id, { name, phone }) {
+    this.db.prepare('UPDATE drivers SET name = ?, phone = ? WHERE id = ? AND deleted_at IS NULL').run(name, phone, id);
+    return this.getDriver(id);
+  }
+
+  /** Gone from the list; orders already on their way keep the driver's name and phone. */
+  deleteDriver(id) {
+    return Number(this.db.prepare('UPDATE drivers SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL').run(Date.now(), id).changes) === 1;
   }
 
   bumpNotify(order) {

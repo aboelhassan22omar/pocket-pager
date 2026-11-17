@@ -15,6 +15,28 @@ export function cleanEmail(value, field = 'email') {
 }
 
 /**
+ * An Egyptian mobile number in international form without the +, for wa.me and tel:
+ * "01012345678", "+20 10 1234 5678", "٠١٠١٢٣٤٥٦٧٨" -> "201012345678". 400 on anything else.
+ */
+export function egyptMobile(value, field = 'phone') {
+  const bad = () => new HttpError(400, 'اكتب رقم موبايل مصري صح، زي 01012345678', { field });
+  let digits;
+  try {
+    digits = cleanPhone(value, field)?.replace(/^\+/, '') ?? '';
+  } catch {
+    throw bad();
+  }
+  if (digits.startsWith('00')) digits = digits.slice(2);
+  if (/^01[0125]\d{8}$/.test(digits)) digits = `2${digits}`;
+  else if (/^1[0125]\d{8}$/.test(digits)) digits = `20${digits}`;
+  if (!/^201[0125]\d{8}$/.test(digits)) throw bad();
+  return digits;
+}
+
+/** 201012345678 -> 01012345678, as people write it. */
+export const localMobile = (digits) => (digits ? `0${String(digits).slice(2)}` : null);
+
+/**
  * A phone number as digits with an optional leading +, null when empty. Arabic and Persian
  * digits, spaces, dashes, dots and brackets are accepted as typed: "٠١٠ ١٢٣٤ ٥٦٧٨" -> "01012345678".
  */

@@ -16,7 +16,7 @@ function branchStats(ctx, shop, { since, now }) {
   const late = (shop.late_after_minutes ?? 10) * 60_000;
   const row = db.prepare(`
     SELECT
-      SUM(CASE WHEN status IN ('preparing', 'ready') THEN 1 ELSE 0 END) AS open_now,
+      SUM(CASE WHEN status IN ('preparing', 'ready', 'out_for_delivery') THEN 1 ELSE 0 END) AS open_now,
       SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS today,
       SUM(CASE WHEN created_at >= ? AND COALESCE(ready_at, closed_at, ?) - created_at > ? THEN 1 ELSE 0 END) AS late_today,
       MAX(created_at) AS last_order_at

@@ -28,16 +28,29 @@ export function vacuumInto(db, file) {
  * Numbered, idempotent migrations tracked by PRAGMA user_version; each step runs in its own
  * transaction. `backupFile`, when given, receives a VACUUM INTO copy before an *existing*
  * database (user_version > 0) is migrated.
+ *
+ * A step is SQL, or { sql, rebuilds, referrers } for one that rebuilds a table (SQLite can't
+ * change a CHECK in place): foreign keys go off around it, so dropping the old table doesn't
+ * cascade into the rows pointing at it, and the `referrers` tables are checked before commit.
  */
 export function runMigrations(db, steps, { backupFile } = {}) {
   const current = db.prepare('PRAGMA user_version').get().user_version;
   if (current >= steps.length) return 0;
   if (current > 0 && backupFile) vacuumInto(db, backupFile);
   for (let v = current; v < steps.length; v++) {
-    tx(db, () => {
-      db.exec(steps[v]);
-      db.exec(`PRAGMA user_version = ${v + 1}`);
-    });
+    const step = typeof steps[v] === 'string' ? { sql: steps[v] } : steps[v];
+    if (step.rebuilds) db.exec('PRAGMA foreign_keys = OFF');
+    try {
+      tx(db, () => {
+        db.exec(step.sql);
+        for (const table of step.referrers ?? []) {
+          if (db.prepare(`PRAGMA foreign_key_check(${table})`).all().length) throw new Error(`migration ${v + 1}: rows of ${table} lost their parent`);
+        }
+        db.exec(`PRAGMA user_version = ${v + 1}`);
+      });
+    } finally {
+      if (step.rebuilds) db.exec('PRAGMA foreign_keys = ON');
+    }
   }
   return steps.length - current;
 }

@@ -19,7 +19,8 @@ export function median(values) {
  */
 export function orderTimes(order, lateMs, now) {
   const prep = order.ready_at != null ? Math.round((order.ready_at - order.created_at) / 1000) : null;
-  const wait = order.status === 'picked' && order.ready_at != null && order.closed_at != null
+  // A delivery's time on the road is not a wait at the counter.
+  const wait = order.status === 'picked' && order.order_type !== 'delivery' && order.ready_at != null && order.closed_at != null
     ? Math.round((order.closed_at - order.ready_at) / 1000)
     : null;
   const end = order.ready_at ?? order.closed_at ?? now;
