@@ -1,0 +1,80 @@
+/* Pocket Pager — brand tokens (Aurexis). Product chrome only: a café's own logo colour still themes its customer pages. */
+:root {
+  /* Brand orange */
+  --pp-orange-300: #FFA024;
+  --pp-orange-500: #FF6A13;   /* primary */
+  --pp-orange-700: #EE4510;
+  --pp-amber:      #FFB020;   /* highlight / "Pager" on dark */
+  --pp-gradient:   linear-gradient(145deg, #FFA024 0%, #FF6A13 52%, #EE4510 100%);
+  --pp-gradient-text-dark:  linear-gradient(90deg, #FF7A1A, #FFB020);
+  --pp-gradient-text-light: linear-gradient(90deg, #EE4510, #FF6A13);
+
+  /* Ink & neutrals */
+  --pp-night:  #070A14;
+  --pp-navy:   #0D1324;   /* dark surface / text on light */
+  --pp-line:   #2A3350;
+  --pp-steel:  #5F6A82;
+  --pp-slate:  #9AA4B8;
+  --pp-mist:   #C9D1E3;
+  --pp-cloud:  #F5F7FB;
+  --pp-cream:  #FFF4E6;   /* warm light surface */
+  --pp-ink:    #1B1206;   /* text on orange */
+
+  /* Status */
+  --pp-ready:  #22D39A;   /* order ready (green = ready, never decorative) */
+  --pp-danger: #F0453A;   /* cancel / late */
+
+  /* Type */
+  --pp-font: "Readex Pro", system-ui, sans-serif;  /* one family, Arabic + Latin */
+  --pp-weight-regular: 400;
+  --pp-weight-bold: 700;
+  --pp-tracking-wordmark: -0.02em;
+  --pp-tracking-caps: 0.25em;  /* POWERED BY AUREXIS */
+
+  /* Shape */
+  --pp-radius-tile: 28%;  /* app tile corner ratio */
+  --pp-radius-card: 24px;
+  --pp-radius-pill: 999px;
+  --pp-shadow-orange: 0 20px 50px rgba(255, 90, 20, .35);
+}
+
+/*
+ * Pocket Pager's own pages (<html class="pp">: landing, /demo, /super, privacy) wear the brand:
+ * the page tokens of base.css mapped onto it, 60 navy / 30 neutrals / 10 orange. A café's pages
+ * never load this file; they keep their logo's colour (color.js brandTheme).
+ */
+.pp {
+  color-scheme: dark;
+  --bg: var(--pp-navy);
+  --surface: #131B30;
+  --surface-2: #1A2440;
+  --line: rgb(201 209 227 / 0.1);
+  --line-strong: rgb(201 209 227 / 0.2);
+  --text: var(--pp-cloud);
+  --muted: var(--pp-slate);
+  --accent: var(--pp-orange-500);
+  --on-accent: var(--pp-ink);
+  --danger: var(--pp-danger);
+  --on-danger: #fff;
+  --font: var(--pp-font);
+}
+
+/* The product's mark beside a page title (/super). */
+.pp .pp-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pp .pp-title img {
+  flex: none;
+  border-radius: 28%;
+}
+
+/* Sign-in on the product's pages: its lockup above the form. */
+.pp .login-brand {
+  display: block;
+  width: auto;
+  height: 32px;
+  margin: 0 auto 18px;
+}

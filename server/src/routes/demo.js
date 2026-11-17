@@ -7,7 +7,7 @@ import { PUBLIC_DIR } from '../paths.js';
 import { setOwnerSession, setStaffSession } from '../sessions.js';
 import { openSse } from '../sse.js';
 import { dayIn } from '../util.js';
-import { publicShop } from '../views.js';
+import { DEMO_SHARE, publicShop, shareMeta } from '../views.js';
 import { HttpError } from '../errors.js';
 
 const VISITOR_COOKIE = 'sp_demo';
@@ -21,7 +21,7 @@ const CAFE_MAX_AGE = 7 * 24 * 3600;
 // side by side. Two visitors never share a café.
 export default async function demoRoutes(app, deps) {
   const { config, control, screens } = deps;
-  const page = fs.readFileSync(path.join(PUBLIC_DIR, 'demo.html'), 'utf8');
+  const page = fs.readFileSync(path.join(PUBLIC_DIR, 'demo.html'), 'utf8').replace('<!--SHARE_META-->', shareMeta(config, DEMO_SHARE));
   // New cafés per address: a person reloading is fine, a script making thousands is not.
   const newCafes = createRateLimiter({ limit: 20, windowMs: 3600_000 });
   app.addHook('onClose', async () => newCafes.close());

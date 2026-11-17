@@ -43,6 +43,7 @@ function showLogin() {
   const root = $('login-root');
   root.innerHTML = `
     <form class="login" novalidate>
+      <img class="login-brand" src="/img/brand/lockup-on-dark.svg" alt="Pocket Pager" width="146" height="32">
       <h1>لوحة الإدارة</h1>
       <p class="muted">اكتب كلمة السر</p>
       <input class="input" name="password" type="password" autocomplete="current-password" aria-label="كلمة السر" required>

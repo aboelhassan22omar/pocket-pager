@@ -1,0 +1,159 @@
+/* Pocket Pager's landing page (/): the tile buzzes once like a pager, the tagline carries the
+   page. Navy is the ground (60), cloud and slate the words (30), orange only on the tile and
+   the one action (10). Customers who land here by mistake read the first lines; café owners
+   read on. */
+
+.landing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100dvh;
+  padding: calc(56px + env(safe-area-inset-top)) var(--gutter) calc(var(--footer-h) + 40px + env(safe-area-inset-bottom));
+  /* One warm light from above, as on the share image; it fades before the words. */
+  background:
+    radial-gradient(38rem 26rem at 50% -6rem, rgb(255 106 19 / 0.16), transparent 70%),
+    var(--bg);
+}
+
+.hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: min(100%, 46rem);
+  text-align: center;
+}
+
+.hero-tile {
+  width: clamp(96px, 26vw, 128px);
+  height: auto;
+  border-radius: 28%;
+  box-shadow: var(--pp-shadow-orange);
+  overflow: visible;
+}
+
+.hero-name {
+  margin: 28px 0 0;
+  line-height: 0;
+}
+
+.hero-name img {
+  width: auto;
+  height: clamp(30px, 8vw, 40px);
+}
+
+.hero-tagline {
+  margin: 22px 0 0;
+  color: var(--text);
+  font-size: clamp(2.25rem, 9vw, 4.5rem);
+  font-weight: var(--pp-weight-bold);
+  line-height: 1.2;
+  text-wrap: balance;
+}
+
+.hero-lede {
+  max-width: 30rem;
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: var(--fs-md);
+  line-height: 1.75;
+  text-wrap: pretty;
+}
+
+/* For café owners: one quiet surface and the page's single orange action. */
+.for-shops {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px 28px;
+  width: min(100%, 40rem);
+  margin-top: clamp(48px, 10vh, 88px);
+  padding: 22px 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--pp-radius-card);
+  background: var(--surface);
+}
+
+.for-shops-text {
+  flex: 1 1 18rem;
+}
+
+.for-shops h2 {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: var(--pp-weight-bold);
+}
+
+.for-shops p {
+  max-width: 32rem;
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.7;
+}
+
+.for-shops-cta {
+  flex: none;
+  min-height: 52px;
+  padding-inline: 28px;
+  border-radius: var(--pp-radius-pill);
+  font-size: var(--fs-md);
+  font-weight: var(--pp-weight-bold);
+}
+
+.for-shops-cta:hover {
+  background: var(--pp-orange-300);
+}
+
+.for-shops-cta:focus-visible {
+  outline: 3px solid var(--pp-amber);
+  outline-offset: 3px;
+}
+
+@media (max-width: 480px) {
+  .for-shops {
+    padding: 20px;
+  }
+
+  .for-shops-cta {
+    width: 100%;
+  }
+}
+
+/* The one moment: shortly after the page opens the pager buzzes, its waves flash, then it rests. */
+@media (prefers-reduced-motion: no-preference) {
+  .hero-tile {
+    animation: tile-in 520ms var(--ease) both, buzz 720ms 620ms ease-in-out both;
+  }
+
+  .hero-tile .wave {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: wave 720ms 620ms ease-out both;
+  }
+
+  .hero-tile .wave-end {
+    animation-delay: 680ms;
+  }
+}
+
+@keyframes tile-in {
+  from {
+    opacity: 0;
+    transform: scale(0.86);
+  }
+}
+
+@keyframes buzz {
+  0%, 100% { transform: none; }
+  12%, 37%, 62% { transform: translateX(-3px) rotate(-3deg); }
+  25%, 50%, 75% { transform: translateX(3px) rotate(3deg); }
+  88% { transform: rotate(-1deg); }
+}
+
+@keyframes wave {
+  0% { opacity: 1; transform: scale(1); }
+  35% { opacity: 0.35; transform: scale(1.18); }
+  70% { opacity: 1; transform: scale(1.06); }
+  100% { opacity: 1; transform: scale(1); }
+}

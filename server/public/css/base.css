@@ -27,15 +27,18 @@
 :root {
   color-scheme: dark;
 
-  --bg: #17191d;
-  --surface: #20242a;
-  --surface-2: #2a2f36;
-  --line: rgb(228 232 238 / 0.08);
-  --line-strong: rgb(228 232 238 / 0.16);
-  --text: #e4e8ee;
-  --muted: #98a1ac;
-  --accent: #9db7d4;
-  --on-accent: #17191d;
+  /* The default look is Pocket Pager's (brand/pocket-pager-brand): navy 60, neutrals 30, orange
+     10. A branch with a logo colour replaces all of these (color.js brandTheme). Text on the
+     orange is the brand's ink, never white. */
+  --bg: #0d1324;
+  --surface: #131b30;
+  --surface-2: #1a2440;
+  --line: rgb(201 209 227 / 0.1);
+  --line-strong: rgb(201 209 227 / 0.2);
+  --text: #f5f7fb;
+  --muted: #9aa4b8;
+  --accent: #ff6a13;
+  --on-accent: #1b1206;
   --ready: #3f8f60;
   --ready-deep: #2f7a4f;
   --danger: #c8574f;
@@ -502,19 +505,19 @@ select {
   pointer-events: auto;
 }
 
-/* Mark + wordmark as on aurexis.cc (gap 11px, 0.22em tracking), scaled down. */
+/* The Pocket Pager lockup (tile + wordmark), 16px tall: the brand's minimum is 16px. */
 .powered-by img {
-  width: 17px;
+  width: auto;
   height: 16px;
-  margin-inline-start: 2px;
 }
 
-.powered-by strong {
-  margin-inline-start: -1px;
-  color: var(--text);
-  font-size: 0.8125rem;
+/* Pocket Pager's own pages: the brand's caps line, as on its stacked lockup. */
+.powered-by.is-own span {
+  color: var(--muted);
+  font-size: 0.6875rem;
   font-weight: 700;
-  letter-spacing: 0.22em;
+  letter-spacing: var(--pp-tracking-caps, 0.25em);
+  text-transform: uppercase;
 }
 
 /* Dashboards: the footer closes the page instead of covering its bottom. */

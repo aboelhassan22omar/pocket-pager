@@ -1,4 +1,4 @@
-/* Privacy & support page: one readable column on the graphite base. */
+/* Privacy & support page: one readable column on Pocket Pager's navy. */
 
 .legal {
   width: min(100% - 2 * var(--gutter), 640px);
@@ -10,6 +10,22 @@
 .legal h1 {
   margin: 0 0 4px;
   font-size: var(--fs-2xl);
+}
+
+.legal .legal-brand {
+  margin-bottom: 14px;
+  line-height: 0;
+}
+
+.legal-brand img {
+  width: auto;
+  height: 36px;
+}
+
+.legal-tagline {
+  margin: 0 0 18px;
+  font-size: var(--fs-lg);
+  font-weight: 700;
 }
 
 .legal h2 {

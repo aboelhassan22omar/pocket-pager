@@ -3,7 +3,8 @@
 //
 // A branch's color tints the whole page (brandTheme), not only the buttons, so it feels like its own.
 
-export const BG = '#17191d';
+// The default page background (base.css): Pocket Pager navy.
+export const BG = '#0d1324';
 const DARK_INK = '#17191d';
 const LIGHT_INK = '#ffffff';
 const MIN_UI_CONTRAST = 3; // WCAG 1.4.11 for UI parts against the graphite background
