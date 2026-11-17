@@ -6,7 +6,9 @@ import { api, elapsedLabel, esc, reloadOnNewVersion, shopIdFromPath, syncClock }
 
 const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 const LOGO_MAX = 2 * 1024 * 1024;
-const DEFAULT_ACCENT = '#9db7d4';
+// No logo colour: Pocket Pager orange, its text the brand's ink (base.css).
+const DEFAULT_ACCENT = '#ff6a13';
+const DEFAULT_INK = '#1b1206';
 
 const $ = (id) => document.getElementById(id);
 const shopId = shopIdFromPath(location.pathname);
@@ -119,7 +121,7 @@ function previewAccent(hex) {
   const box = document.querySelector('.accent');
   const accent = hex ? readableAccent(hex) : null;
   box.style.setProperty('--shop-accent', accent ? accent.color : DEFAULT_ACCENT);
-  box.style.setProperty('--shop-ink', accent ? accent.ink : '#17191d');
+  box.style.setProperty('--shop-ink', accent ? accent.ink : DEFAULT_INK);
   applyTheme(document.documentElement, hex ? brandTheme(hex) : null);
 }
 

@@ -157,6 +157,41 @@ export function appleStatus(config, apnsReady) {
 
 const attr = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
+/**
+ * The link preview (WhatsApp, Facebook, X) of Pocket Pager's own pages: they need absolute URLs,
+ * so the server fills <!--SHARE_META--> with PUBLIC_URL.
+ */
+export function shareMeta(config, { path = '/', title, description }) {
+  const url = `${config.publicUrl}${path}`;
+  const image = `${config.publicUrl}/img/brand/og-image-1200x630.png`;
+  return [
+    ['property', 'og:type', 'website'],
+    ['property', 'og:site_name', 'Pocket Pager'],
+    ['property', 'og:locale', 'ar_EG'],
+    ['property', 'og:url', url],
+    ['property', 'og:title', title],
+    ['property', 'og:description', description],
+    ['property', 'og:image', image],
+    ['property', 'og:image:width', '1200'],
+    ['property', 'og:image:height', '630'],
+    ['property', 'og:image:alt', 'Pocket Pager: طلبك جاهز في جيبك'],
+    ['name', 'twitter:card', 'summary_large_image'],
+    ['name', 'twitter:title', title],
+    ['name', 'twitter:description', description],
+    ['name', 'twitter:image', image],
+  ].map(([k, n, v]) => `<meta ${k}="${n}" content="${attr(v)}">`).join('\n  ');
+}
+
+export const LANDING_SHARE = {
+  title: 'Pocket Pager: طلبك جاهز في جيبك',
+  description: 'العميل يمسح كود، ياخد رقم، وموبايله يرن أول ما طلبه يجهز. من غير تطبيق ولا أجهزة.',
+};
+export const DEMO_SHARE = {
+  path: '/demo',
+  title: 'جرّب Pocket Pager بنفسك',
+  description: 'كافيه ديمو شغال بجد: خد رقم من موبايلك، دوس عليه من شاشة الكاشير، وشوف موبايلك بيرن.',
+};
+
 export function appleMeta(config) {
   const { appId, clipBundleId } = config.apple;
   if (!appId || !clipBundleId) return '';

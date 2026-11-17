@@ -19,6 +19,23 @@ body {
   gap: 20px;
 }
 
+.demo-brand {
+  display: inline-block;
+  margin-bottom: 10px;
+  line-height: 0;
+}
+
+.demo-brand img {
+  width: auto;
+  height: 28px;
+}
+
+.demo-brand:focus-visible {
+  outline: 2px solid var(--pp-amber);
+  outline-offset: 4px;
+  border-radius: 6px;
+}
+
 .demo-intro h1 {
   margin: 0;
   font-size: var(--fs-xl);
@@ -56,9 +73,10 @@ body {
 .guide {
   margin: 0;
   padding: 12px 16px;
-  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  border: 1px solid var(--line);
+  border-inline-start: 4px solid var(--accent);
   border-radius: var(--r-control);
-  background: color-mix(in srgb, var(--accent) 9%, var(--bg));
+  background: var(--surface);
   color: var(--text);
   font-size: var(--fs-md);
   font-weight: 500;

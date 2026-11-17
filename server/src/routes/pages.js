@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { PUBLIC_DIR } from '../paths.js';
-import { appleAppSiteAssociation, appleMeta } from '../views.js';
+import { appleAppSiteAssociation, appleMeta, LANDING_SHARE, shareMeta } from '../views.js';
 
 const PAGES = { s: 's.html', bar: 'bar.html', qr: 'qr.html', settings: 'settings.html' };
 
@@ -20,7 +20,7 @@ export default async function pageRoutes(app, { config }) {
   const brandPage = read('brand.html');
   app.get('/brand/:brand', (_req, reply) => sendHtml(reply, brandPage));
 
-  const index = read('index.html');
+  const index = read('index.html').replace('<!--SHARE_META-->', shareMeta(config, LANDING_SHARE));
   app.get('/', (_req, reply) => sendHtml(reply, index));
 
   // App Store privacy policy + support URL (one page, #contact anchors support).

@@ -115,7 +115,8 @@ struct CupBadge: View {
     var body: some View {
         Image(systemName: "cup.and.saucer.fill")
             .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(Theme.background)
+            // On the orange the brand's ink; on green (ready) and grey the navy.
+            .foregroundStyle(status == "preparing" ? Theme.onAccent : Theme.background)
             .frame(width: 24, height: 24)
             .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Theme.tint(for: status)))
     }

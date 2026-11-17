@@ -8,7 +8,8 @@ import {
   BG, brandTheme, contrast, extractAccent, hexToRgb, hslToRgb, MONO_COLOR, readableAccent, rgbToHex, rgbToHsl,
 } from '../public/js/color.js';
 import { reviewHtml } from '../public/js/review.js';
-import { mountPoweredBy, AUREXIS_LOGO, AUREXIS_URL } from '../public/js/powered.js';
+import { mountPoweredBy, AUREXIS_URL, PP_LOCKUP } from '../public/js/powered.js';
+import { shareMeta } from '../src/views.js';
 import { elapsedLabel, esc, isCashierApp, serverNow, SPLASH_MIN_MS, syncClock } from '../public/js/util.js';
 import { etaText } from '../public/js/queue-text.js';
 
@@ -19,8 +20,8 @@ const PAGES = [
   'public/super.html', 'public/brand.html', 'public/privacy.html',
 ];
 
-// Tiny DOM stand-in, enough for powered.js.
-function fakeDocument() {
+// Tiny DOM stand-in, enough for powered.js. `own`: one of Pocket Pager's own pages (<html class="pp">).
+function fakeDocument({ own = false } = {}) {
   const byId = new Map();
   const make = (tag) => {
     const el = {
@@ -44,13 +45,18 @@ function fakeDocument() {
     };
     return el;
   };
-  return { body: make('body'), createElement: make, getElementById: (id) => byId.get(id) ?? null };
+  return {
+    body: make('body'),
+    documentElement: { classList: { contains: (c) => own && c === 'pp' } },
+    createElement: make,
+    getElementById: (id) => byId.get(id) ?? null,
+  };
 }
 
 describe('pages', () => {
   for (const page of PAGES) {
     test(`${page} is Arabic RTL`, () => {
-      assert.match(read(page), /<html lang="ar" dir="rtl"( data-bs-theme="dark")?>/);
+      assert.match(read(page), /<html lang="ar" dir="rtl"( class="pp")?( data-bs-theme="dark")?>/);
     });
 
     test(`${page} mounts Powered by AUREXIS`, () => {
@@ -86,8 +92,8 @@ describe('cashier app pages (private label)', () => {
   });
 });
 
-describe('Powered by AUREXIS', () => {
-  test('mounts a fixed footer linking to aurexis.cc, once', () => {
+describe('Powered by', () => {
+  test('a café\u2019s page: "Powered by" + the Pocket Pager lockup (self-hosted), linking to aurexis.cc, once', () => {
     const doc = fakeDocument();
     const footer = mountPoweredBy(doc);
     assert.equal(footer.id, 'powered-by');
@@ -95,13 +101,22 @@ describe('Powered by AUREXIS', () => {
     const link = footer.children[0];
     assert.equal(link.href, AUREXIS_URL);
     assert.equal(AUREXIS_URL, 'https://aurexis.cc/');
-    const [label, logo, brand] = link.children;
+    const [label, logo] = link.children;
     assert.equal(label.textContent, 'Powered by');
-    assert.equal(brand.textContent, 'AUREXIS');
-    assert.equal(logo.src, AUREXIS_LOGO);
-    assert.equal(AUREXIS_LOGO, 'https://aurexis.cc/brand/aurexis-mark.svg');
+    assert.equal(logo.src, PP_LOCKUP);
+    assert.equal(PP_LOCKUP, '/img/brand/lockup-on-dark.svg');
+    assert.equal(logo.alt, 'Pocket Pager');
+    assert.ok(fs.existsSync(path.join(root, 'public', PP_LOCKUP)), 'the lockup is served');
     assert.equal(mountPoweredBy(doc), footer, 'idempotent');
     assert.equal(doc.body.children.length, 1);
+  });
+
+  test('Pocket Pager\u2019s own pages close with "Powered by Aurexis" only (not "Powered by Pocket Pager")', () => {
+    const footer = mountPoweredBy(fakeDocument({ own: true }));
+    assert.equal(footer.className, 'powered-by is-own');
+    const [label, ...rest] = footer.children[0].children;
+    assert.equal(label.textContent, 'Powered by Aurexis');
+    assert.equal(rest.length, 0);
   });
 
   test('hides the logo when it fails to load', () => {
@@ -120,6 +135,89 @@ describe('Powered by AUREXIS', () => {
     const z = Number(block.match(/z-index: (\d+)/)[1]);
     const customer = read('public/css/customer.css');
     for (const m of customer.matchAll(/z-index: (\d+)/g)) assert.ok(z > Number(m[1]));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Pocket Pager identity (brand/pocket-pager-brand)
+// ---------------------------------------------------------------------------
+
+const ALL_HTML = fs.readdirSync(path.join(root, 'public')).filter((f) => f.endsWith('.html')).map((f) => `public/${f}`);
+const PRIVATE_LABEL = ['public/app.html', 'public/setup.html'];
+const PP_OWN = ['public/index.html', 'public/demo.html', 'public/super.html', 'public/privacy.html'];
+// PNG: width, height and colour type (2 = RGB, 6 = RGBA) from the IHDR chunk.
+const pngInfo = (p) => {
+  const b = fs.readFileSync(p);
+  return { w: b.readUInt32BE(16), h: b.readUInt32BE(20), alpha: b[25] === 6 || b[25] === 4 };
+};
+
+describe('Pocket Pager identity', () => {
+  test('every page but the private-label app pages has the favicon and touch icon, and they exist', () => {
+    for (const page of ALL_HTML.filter((x) => !PRIVATE_LABEL.includes(x))) {
+      const html = read(page);
+      assert.match(html, /<link rel="icon" href="\/favicon\.ico" sizes="48x48">/, page);
+      assert.match(html, /<link rel="icon" href="\/img\/brand\/favicon\.svg" type="image\/svg\+xml">/, page);
+      assert.match(html, /<link rel="apple-touch-icon" href="\/img\/brand\/apple-touch-icon-180\.png">/, page);
+    }
+    for (const page of PRIVATE_LABEL) assert.doesNotMatch(read(page), /img\/brand|favicon|manifest/, page);
+    for (const f of ['favicon.ico', 'img/brand/favicon.svg', 'img/brand/apple-touch-icon-180.png', 'img/brand/og-image-1200x630.png']) {
+      assert.ok(fs.existsSync(path.join(root, 'public', f)), f);
+    }
+  });
+
+  test('the product\u2019s pages wear the brand (class="pp", tokens, manifest); the customer page has no manifest', () => {
+    for (const page of PP_OWN) {
+      const html = read(page);
+      assert.match(html, /<html lang="ar" dir="rtl" class="pp"/, page);
+      assert.match(html, /<link rel="manifest" href="\/manifest\.webmanifest">/, page);
+      assert.ok(html.indexOf('/css/pp-tokens.css') > html.indexOf('/css/base.css'), `${page}: tokens after base.css`);
+      assert.match(html, /<meta name="theme-color" content="#0d1324">/, page);
+    }
+    // A customer who adds the order page to the iPhone home screen must land on that order.
+    assert.doesNotMatch(read('public/s.html'), /manifest/);
+    const manifest = JSON.parse(read('public/manifest.webmanifest'));
+    assert.equal(manifest.name, 'Pocket Pager');
+    assert.equal(manifest.start_url, undefined, 'opens the page it was added from');
+    assert.deepEqual(manifest.icons.map((i) => [i.sizes, i.purpose]), [['192x192', 'any'], ['512x512', 'any'], ['512x512', 'maskable']]);
+    for (const icon of manifest.icons) {
+      const info = pngInfo(path.join(root, 'public', icon.src));
+      assert.equal(`${info.w}x${info.h}`, icon.sizes, icon.src);
+    }
+  });
+
+  test('tokens: the brand file as given, and the default look is navy + orange with ink on orange', () => {
+    const tokens = read('public/css/pp-tokens.css');
+    assert.match(tokens, /--pp-orange-500: #FF6A13;/);
+    assert.match(tokens, /--pp-navy: {3}#0D1324;/);
+    assert.match(tokens, /--pp-ink: {4}#1B1206;/);
+    const base = read('public/css/base.css');
+    const root2 = base.slice(base.indexOf(':root'), base.indexOf('}', base.indexOf(':root')));
+    assert.match(root2, /--bg: #0d1324;/);
+    assert.match(root2, /--accent: #ff6a13;/);
+    assert.match(root2, /--on-accent: #1b1206;/, 'never white on orange');
+  });
+
+  test('landing and demo: the tagline, the lockup, and a share preview filled with absolute URLs', () => {
+    const landing = read('public/index.html');
+    assert.match(landing, /طلبك جاهز في جيبك/);
+    assert.match(landing, /<!--SHARE_META-->/);
+    assert.match(read('public/demo.html'), /<!--SHARE_META-->/);
+    assert.match(read('public/demo.html'), /lockup-on-dark\.svg/);
+    const meta = shareMeta({ publicUrl: 'https://pager.example' }, { path: '/demo', title: 'T "x"', description: 'D' });
+    assert.match(meta, /<meta property="og:image" content="https:\/\/pager\.example\/img\/brand\/og-image-1200x630\.png">/);
+    assert.match(meta, /<meta property="og:url" content="https:\/\/pager\.example\/demo">/);
+    assert.match(meta, /<meta name="twitter:card" content="summary_large_image">/);
+    assert.match(meta, /content="T &#34;x&#34;"/, 'escaped');
+  });
+
+  test('app icons: iOS 1024 with no alpha; the Android template tile 432 opaque, same files the swap replaces', () => {
+    const ios = pngInfo(path.join(root, '../ios/Shared/AppSupport/Assets.xcassets/AppIcon.appiconset/AppIcon.png'));
+    assert.deepEqual(ios, { w: 1024, h: 1024, alpha: false });
+    const contents = JSON.parse(fs.readFileSync(path.join(root, '../ios/Shared/AppSupport/Assets.xcassets/AppIcon.appiconset/Contents.json'), 'utf8'));
+    assert.deepEqual(contents.images.map((i) => [i.filename, i.size]), [['AppIcon.png', '1024x1024']]);
+    for (const f of ['drawable-nodpi/app_icon.png', 'mipmap-nodpi/ic_launcher.png']) {
+      assert.deepEqual(pngInfo(path.join(root, '../apps/android/res', f)), { w: 432, h: 432, alpha: false }, f);
+    }
   });
 });
 
