@@ -1,7 +1,7 @@
 // Bottom-sheet form shared by the super and brand dashboards.
 //   openForm({ title, intro, fields: [{ name, label, type, value, placeholder, options, hint, disabled }], submit, onSubmit })
 //   type: text (default) | number | date | select | textarea | file (values[name] is a File) |
-//         toggle (checkbox: values[name] === 'on') | heading
+//         toggle (checkbox: values[name] === 'on') | heading | html (f.html, already escaped)
 // onSubmit(values) may throw an ApiError; its message (and data.field) is shown in the sheet.
 
 import { icons } from './icons.js';
@@ -56,6 +56,7 @@ function mountSheet(backdrop) {
 
 function fieldHtml(f) {
   if (f.type === 'heading') return `<h3 class="form-heading">${esc(f.label)}</h3>`;
+  if (f.type === 'html') return f.html;
   const id = `f-${f.name}`;
   const common = `id="${id}" name="${esc(f.name)}" ${f.required ? 'required' : ''} ${f.disabled ? 'disabled' : ''}`;
   const hint = f.hint ? `<small>${esc(f.hint)}</small>` : '';

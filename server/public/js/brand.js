@@ -147,6 +147,7 @@ function render() {
       now,
       extra: renewalHtml(b.plan, b.lastPayment),
       actions: `<button class="btn btn-sm" data-act="features" data-branch="${esc(b.id)}" type="button">الخصائص</button>
+        ${b.delivery ? `<button class="btn btn-sm" data-act="drivers" data-branch="${esc(b.id)}" type="button">المناديب</button>` : ''}
         <button class="btn btn-sm" data-act="rename" data-branch="${esc(b.id)}" type="button">غيّر الاسم</button>`,
     })).join('')}</div>`
     : '<p class="empty-note">لسه مفيش فروع. كلّم Aurexis عشان نضيفها.</p>';
@@ -573,6 +574,15 @@ function featureFields(b) {
       name: 'orderShare', type: 'toggle', label: 'أكتر من موبايل على نفس الطلب',
       hint: 'كل اللي مسحوا الكود يتابعوا الطلب وموبايلاتهم كلها ترن. لو اتقفلت، أول موبايل بس', value: b.orderShare,
     },
+    { type: 'heading', label: 'التوصيل' },
+    {
+      name: 'delivery', type: 'toggle', label: 'توصيل بمناديب المحل',
+      hint: 'الكاشير يعمل «طلب توصيل» برقم موبايل العميل ويبعتله لينك المتابعة على واتساب. لما الطلب يخرج يختار المندوب، والعميل يشوفه «في الطريق» ويقدر يكلّمه', value: b.delivery,
+    },
+    {
+      name: 'deliveryCloseMinutes', label: 'الطلب يتقفل لوحده بعد كام دقيقة من خروجه', type: 'number', inputmode: 'numeric', dir: 'ltr',
+      value: b.deliveryCloseMinutes ?? 60, hint: 'من 15 لـ 240. الكاشير يقدر يدوس «وصل» قبلها',
+    },
     { type: 'heading', label: 'أرقام التيكاواي' },
     {
       name: 'manualNumbers', type: 'toggle', label: 'الكاشير يكتب رقم الفاتورة',
@@ -609,7 +619,86 @@ function featureBody(b, v) {
     orderShare: v.orderShare === 'on',
     manualNumbers: v.manualNumbers === 'on',
     messageBox: v.messageBox === 'on',
+    delivery: v.delivery === 'on',
+    deliveryCloseMinutes: Number(v.deliveryCloseMinutes),
   };
+}
+
+// ---------- the branch's delivery drivers ----------
+
+const driversHtml = (list) => (list.length
+  ? list.map((d) => `<li class="driver-row">
+      <span class="driver-who"><strong>${esc(d.name)}</strong><span class="num" dir="ltr">${esc(d.phone)}</span></span>
+      <span class="driver-actions">
+        <button class="btn btn-sm" type="button" data-driver-edit="${d.id}">تعديل</button>
+        <button class="btn btn-sm btn-danger" type="button" data-driver-delete="${d.id}">امسح</button>
+      </span></li>`).join('')
+  : '<li class="driver-empty muted">لسه مفيش مناديب. ضيف أول واحد تحت.</li>');
+
+async function openDrivers(b) {
+  const driversBase = `${base}/branches/${encodeURIComponent(b.id)}/drivers`;
+  let list = (await api(driversBase)).drivers;
+  let editing = null;
+  const { form } = openForm({
+    title: `مناديب ${b.name}`,
+    intro: 'الكاشير بيختار منهم لما الطلب يخرج، والعميل بيشوف اسم المندوب ويقدر يتصل بيه وهو في الطريق.',
+    fields: [
+      { type: 'html', html: `<ul class="driver-list" id="driver-list">${driversHtml(list)}</ul>` },
+      { type: 'heading', label: 'مندوب جديد' },
+      { name: 'name', label: 'الاسم', maxlength: 40, placeholder: 'مثلًا: أحمد' },
+      { name: 'phone', label: 'الموبايل', type: 'tel', inputmode: 'tel', dir: 'ltr', placeholder: '01012345678' },
+    ],
+    submit: 'ضيف المندوب',
+    onSubmit: async (v) => {
+      const body = { name: v.name ?? '', phone: v.phone ?? '' };
+      const res = editing
+        ? await api(`${driversBase}/${editing}`, { method: 'POST', body })
+        : await api(driversBase, { method: 'POST', body });
+      list = res.drivers;
+      toast(editing ? 'اتعدّل' : 'المندوب اتضاف');
+      reset();
+      return true; // stays open for the next one
+    },
+  });
+  const heading = form.querySelector('.form-heading');
+  const submit = form.querySelector('[type=submit]');
+  function reset() {
+    editing = null;
+    form.elements.name.value = '';
+    form.elements.phone.value = '';
+    heading.textContent = 'مندوب جديد';
+    submit.textContent = 'ضيف المندوب';
+    form.querySelector('#driver-list').innerHTML = driversHtml(list);
+  }
+  form.addEventListener('click', async (e) => {
+    const edit = e.target.closest('[data-driver-edit]');
+    const del = e.target.closest('[data-driver-delete]');
+    if (edit) {
+      const d = list.find((x) => String(x.id) === edit.dataset.driverEdit);
+      if (!d) return;
+      editing = d.id;
+      form.elements.name.value = d.name;
+      form.elements.phone.value = d.phone;
+      heading.textContent = `تعديل ${d.name}`;
+      submit.textContent = 'احفظ التعديل';
+      form.elements.name.focus();
+    } else if (del) {
+      if (del.dataset.armed !== '1') {
+        del.dataset.armed = '1';
+        del.textContent = 'متأكد؟';
+        return;
+      }
+      del.disabled = true;
+      try {
+        list = (await api(`${driversBase}/${del.dataset.driverDelete}/delete`, { method: 'POST', body: {} })).drivers;
+        toast('المندوب اتمسح');
+        reset();
+      } catch (err) {
+        toast(err.message, 'error');
+        del.disabled = false;
+      }
+    }
+  });
 }
 
 function openFeatures(b) {
@@ -684,6 +773,10 @@ async function boot() {
     const branch = data.branches.find((b) => b.id === el.dataset.branch);
     if (el.dataset.act === 'features') {
       openFeatures(branch);
+      return;
+    }
+    if (el.dataset.act === 'drivers') {
+      openDrivers(branch).catch((err) => toast(err.message, 'error'));
       return;
     }
     openForm({

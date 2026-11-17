@@ -5,7 +5,8 @@ import { analyticsCsv, brandAnalytics, brandOverview } from '../aggregate.js';
 import { appView, brandAppDir, ownerAppView } from '../apps.js';
 import { DEFAULT_RING } from '../../public/js/chime.js';
 import { cleanTexts } from '../../public/js/texts.js';
-import { cleanEmail, cleanPhone } from '../contact.js';
+import { channels } from '../bus.js';
+import { cleanEmail, cleanPhone, egyptMobile, localMobile } from '../contact.js';
 import { DEMO_LOCKED, isDemo } from '../demo.js';
 import { HttpError } from '../errors.js';
 import { LOYALTY_EVERY, PRODUCT_TEXT_MAX, REWARD_TEXT_MAX } from '../loyalty.js';
@@ -13,7 +14,7 @@ import { createRateLimiter } from '../ratelimit.js';
 import {
   AUDIO_MIME, AUDIO_TYPES, clearRingFiles, RING_FILE_MAX_BYTES, RING_FILE_RE, RING_IDS, ringView, sniffAudio,
 } from '../ring.js';
-import { SHOP_ID_RE } from '../store.js';
+import { DELIVERY_CLOSE_MINUTES, DRIVER_NAME_MAX, SHOP_ID_RE } from '../store.js';
 import { OWNER_COOKIE, requireJson, requireOwner, setOwnerSession } from '../sessions.js';
 import { FEATURES } from '../plans.js';
 import { parsePlaceId } from '../upgrades.js';
@@ -65,6 +66,16 @@ export function ownerExtraFields(body) {
   if ('orderShare' in body) fields.order_share = body.orderShare === false ? 0 : 1;
   if ('manualNumbers' in body) fields.manual_numbers = body.manualNumbers === true ? 1 : 0;
   if ('messageBox' in body) fields.message_box = body.messageBox === true ? 1 : 0;
+  // Delivery by the branch's own drivers, and how long an order on its way stays open.
+  if ('delivery' in body) fields.delivery = body.delivery === true ? 1 : 0;
+  if ('deliveryCloseMinutes' in body) {
+    const minutes = Number(body.deliveryCloseMinutes);
+    const { min, max } = DELIVERY_CLOSE_MINUTES;
+    if (!Number.isInteger(minutes) || minutes < min || minutes > max) {
+      throw new HttpError(400, `من ${min} لـ ${max} دقيقة`, { field: 'deliveryCloseMinutes' });
+    }
+    fields.delivery_close_minutes = minutes;
+  }
   if ('promoStartsAt' in body) fields.promo_starts_at = promoDay(body, 'promoStartsAt');
   if ('promoEndsAt' in body) fields.promo_ends_at = promoDay(body, 'promoEndsAt');
   if (fields.promo_starts_at && fields.promo_ends_at && fields.promo_ends_at < fields.promo_starts_at) {
@@ -78,7 +89,7 @@ const MAX_LOGIN_CANDIDATES = 5;
 
 // Brand owner: sees and manages the branches of their own brand only.
 export default async function brandRoutes(app, deps) {
-  const { config, control, tenants, service } = deps;
+  const { config, control, tenants, service, bus } = deps;
   const loginLimiter = createRateLimiter({ limit: config.loginRatePerMin });
   app.addHook('onClose', async () => loginLimiter.close());
 
@@ -230,6 +241,50 @@ export default async function brandRoutes(app, deps) {
         audit(on ? 'feature.enable' : 'feature.disable', { feature });
       }
       return { ok: true };
+    });
+
+    // ---- drivers: the branch's own delivery drivers (name + mobile), in its own database ----
+
+    const driverView = (d) => ({ id: d.id, name: d.name, phone: localMobile(d.phone) });
+    function driverBody(body) {
+      const name = typeof body?.name === 'string' ? body.name.trim() : '';
+      if (!name || name.length > DRIVER_NAME_MAX) throw new HttpError(400, `اسم المندوب من 1 لـ ${DRIVER_NAME_MAX} حرف`, { field: 'name' });
+      return { name, phone: egyptMobile(body?.phone, 'phone') };
+    }
+    function ownDriver(ctx, req) {
+      const driver = ctx.store.getDriver(Number(req.params.driver));
+      if (!driver) throw new HttpError(404, 'المندوب ده مش موجود');
+      return driver;
+    }
+    // Open cashier screens get the new list at once.
+    function driversChanged(req, ctx, action, detail) {
+      const list = ctx.store.listDrivers().map(driverView);
+      bus.emit(channels(ctx.branch.id).bar, 'drivers', list);
+      control.audit({ actor: `owner:${req.owner.id}`, action, brandId: req.params.brand, branchId: ctx.branch.id, detail, ip: req.ip });
+      return list;
+    }
+
+    b.get('/branches/:branch/drivers', async (req) => ({ drivers: ownBranch(req).store.listDrivers().map(driverView) }));
+
+    b.post('/branches/:branch/drivers', async (req, reply) => {
+      const ctx = ownBranch(req);
+      const driver = ctx.store.addDriver(driverBody(req.body));
+      const drivers = driversChanged(req, ctx, 'driver.add', { id: driver.id, name: driver.name });
+      return reply.code(201).send({ driver: driverView(driver), drivers });
+    });
+
+    b.post('/branches/:branch/drivers/:driver', async (req) => {
+      const ctx = ownBranch(req);
+      const driver = ctx.store.updateDriver(ownDriver(ctx, req).id, driverBody(req.body));
+      return { driver: driverView(driver), drivers: driversChanged(req, ctx, 'driver.edit', { id: driver.id, name: driver.name }) };
+    });
+
+    // Orders already on their way keep the driver's name and phone until they close.
+    b.post('/branches/:branch/drivers/:driver/delete', async (req) => {
+      const ctx = ownBranch(req);
+      const driver = ownDriver(ctx, req);
+      ctx.store.deleteDriver(driver.id);
+      return { ok: true, drivers: driversChanged(req, ctx, 'driver.delete', { id: driver.id, name: driver.name }) };
     });
 
     // ---- cashier app: the download link to pass on, and the devices it is installed on ----

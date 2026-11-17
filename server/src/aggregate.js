@@ -88,6 +88,8 @@ function branchSummary(deps, branch, now, { withPin = false, apps = {} } = {}) {
     orderQr: Boolean(shop?.order_qr),
     manualNumbers: Boolean(shop?.manual_numbers),
     messageBox: Boolean(shop?.message_box),
+    delivery: Boolean(shop?.delivery),
+    deliveryCloseMinutes: shop?.delivery_close_minutes ?? 60,
     orderShare: shop?.order_share == null ? true : Boolean(shop.order_share),
     promoImageUrl: shop?.promo_image ? `/media/b/${branch.id}/${shop.promo_image}` : null,
     promoStartsAt: shop?.promo_starts_at ?? null,
