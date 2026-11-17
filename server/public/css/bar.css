@@ -15,16 +15,24 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px;
+  padding: 12px 16px;
   border: 1px solid var(--line-strong);
   border-radius: var(--r-tile);
   background: var(--surface);
+  /* The next customer's ticket: a notch punched in each side. */
+  --notch: 9px;
+  -webkit-mask:
+    radial-gradient(circle var(--notch) at 0 50%, #0000 calc(100% - 0.5px), #000) left / 51% 100% no-repeat,
+    radial-gradient(circle var(--notch) at 100% 50%, #0000 calc(100% - 0.5px), #000) right / 51% 100% no-repeat;
+  mask:
+    radial-gradient(circle var(--notch) at 0 50%, #0000 calc(100% - 0.5px), #000) left / 51% 100% no-repeat,
+    radial-gradient(circle var(--notch) at 100% 50%, #0000 calc(100% - 0.5px), #000) right / 51% 100% no-repeat;
 }
 
 .count-btn {
   flex: none;
-  width: 60px;
-  min-height: 60px;
+  width: 64px;
+  min-height: 64px;
   padding: 0;
   font-size: var(--fs-xl);
   font-weight: 500;
@@ -90,9 +98,14 @@
   touch-action: manipulation;
 }
 
+/* Phone: the next number with its label, the last number one line under it.
+   Wider: two halves of a ticket, torn along a dashed line: next | last. */
 .counter-text {
   flex: 1;
   min-width: 0;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
   text-align: center;
 }
 
@@ -100,24 +113,103 @@
   margin: 0;
 }
 
+.counter-label {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 400;
+}
+
 .counter-next {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   justify-content: center;
-  gap: 2px 10px;
-  font-size: var(--fs-sm);
+  gap: 0 10px;
 }
 
 .counter-next strong {
-  font-size: 2.25rem;
+  font-size: 2.5rem;
   font-weight: 700;
-  line-height: 1.1;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
 }
 
 .counter-last {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 6px;
   color: var(--muted);
   font-size: var(--fs-sm);
+}
+
+.counter-waiting {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+@media (min-width: 560px) {
+  .counter-text {
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 4px 0;
+  }
+
+  .counter-next,
+  .counter-last {
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .counter-next strong {
+    font-size: 3.25rem;
+    line-height: 1;
+  }
+
+  .counter-last {
+    min-width: 8.5rem;
+    padding: 4px 24px;
+    border-inline-start: 2px dashed var(--line-strong);
+  }
+
+  .counter-last .num {
+    color: var(--text);
+    font-size: var(--fs-xl);
+    font-weight: 600;
+    line-height: 1.2;
+  }
+
+  /* «لسه مفيش»: words, not a number, so they stay quiet. */
+  .counter-last .num.is-none {
+    color: var(--muted);
+    font-size: var(--fs-md);
+    font-weight: 400;
+    line-height: 1.75;
+  }
+
+  .counter-waiting {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Header links: icons on a phone, icon + words from a tablet up. */
+.topbar .icon-link span {
+  display: none;
+}
+
+@media (min-width: 640px) {
+  .topbar .icon-link {
+    display: inline-flex;
+    gap: 8px;
+    width: auto;
+    padding: 0 12px;
+    font-size: var(--fs-sm);
+  }
+
+  .topbar .icon-link span {
+    display: inline;
+  }
 }
 
 .board-meta {
@@ -238,21 +330,6 @@
   color: #f0b4ae;
 }
 
-.late-chime {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--muted);
-  font-size: var(--fs-sm);
-  cursor: pointer;
-}
-
-.late-chime input {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--accent);
-}
-
 .tile.is-new {
   animation: arrive 700ms var(--ease);
 }
@@ -267,13 +344,12 @@
   }
 }
 
+/* No orders: what to do next, not a box. */
 .empty {
   display: grid;
   justify-items: center;
   gap: 4px;
-  padding: 56px 16px;
-  border: 1px dashed var(--line-strong);
-  border-radius: var(--r-card);
+  padding: 40px 16px 32px;
   text-align: center;
 }
 
@@ -281,15 +357,152 @@
   margin: 0;
 }
 
+.empty-icon {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 10px;
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--muted);
+}
+
 .empty-title {
   font-size: var(--fs-lg);
   font-weight: 600;
 }
 
-.help {
-  margin: 8px 0 0;
-  max-width: 62ch;
+.empty-qr {
+  margin-top: 16px;
+  touch-action: manipulation;
+}
+
+/* How the screen works: each gesture beside what it does, then this screen's sound. */
+.guide {
+  display: grid;
+  gap: 16px;
+  margin-top: 8px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+}
+
+.guide-title {
+  margin: 0;
+  color: var(--muted);
   font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.gestures {
+  display: grid;
+  gap: 12px 32px;
+  margin: 0;
+}
+
+.gestures > div {
+  display: grid;
+  grid-template-columns: 7rem minmax(0, 1fr);
+  align-items: baseline;
+  gap: 12px;
+}
+
+.gestures dt {
+  justify-self: start;
+  padding: 2px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.gestures dd {
+  margin: 0;
+  max-width: 62ch;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+/* A phone: the gesture over its meaning, so the words get the whole width. */
+@media (max-width: 479px) {
+  .gestures {
+    gap: 14px;
+  }
+
+  .gestures > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+}
+
+@media (min-width: 900px) {
+  .gestures {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.switch-row > span {
+  display: grid;
+  gap: 2px;
+  font-size: var(--fs-sm);
+}
+
+.switch-row strong {
+  font-weight: 500;
+}
+
+.switch-row .muted {
+  font-size: var(--fs-xs);
+}
+
+/* A native checkbox drawn as a switch: the accent when on. */
+.switch {
+  appearance: none;
+  flex: none;
+  position: relative;
+  width: 46px;
+  height: 28px;
+  margin: 0;
+  border-radius: 999px;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+  cursor: pointer;
+  transition: background-color 180ms var(--ease);
+}
+
+.switch::after {
+  content: '';
+  position: absolute;
+  /* Physical side: the page is RTL, and Chromium lays a checkbox's ::after out LTR. */
+  top: 3px;
+  right: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--text);
+  transition: transform 180ms var(--ease);
+}
+
+.switch:checked {
+  background: var(--accent);
+  box-shadow: none;
+}
+
+.switch:checked::after {
+  background: var(--on-accent);
+  transform: translateX(-18px);
 }
 
 .plan-banner {

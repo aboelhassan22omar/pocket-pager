@@ -2,14 +2,14 @@
 // Dashboards (<body data-powered="inline">) end with it instead, so on a phone it never
 // covers what is being read. Not inside a brand's app: that one carries the brand's name only.
 //
-// A café's pages: "Powered by" + the Pocket Pager lockup. Pocket Pager's own pages
-// (<html class="pp">) are the product already: they close with "POWERED BY AUREXIS".
+// A café's pages: "Powered by" + the Aurexis mark + "AUREXIS". Pocket Pager's own pages
+// (<html class="pp">) close with the caps line "POWERED BY AUREXIS".
 
 import { isCashierApp } from './util.js';
 
 export const AUREXIS_URL = 'https://aurexis.cc/';
-// Self-hosted (no request to another site from a customer's page); white words, for dark pages.
-export const PP_LOCKUP = '/img/brand/lockup-on-dark.svg';
+// The colored mark from aurexis.cc, self-hosted: a customer's page makes no request to another site.
+export const AUREXIS_MARK = '/img/brand/aurexis-mark.svg';
 
 export function mountPoweredBy(doc) {
   if (doc.getElementById('powered-by')) return doc.getElementById('powered-by');
@@ -32,14 +32,16 @@ export function mountPoweredBy(doc) {
 
   if (!own) {
     const logo = doc.createElement('img');
-    logo.src = PP_LOCKUP;
-    logo.alt = 'Pocket Pager';
-    logo.width = 73;
+    logo.src = AUREXIS_MARK;
+    logo.alt = '';
+    logo.width = 17;
     logo.height = 16;
     logo.addEventListener('error', () => {
       logo.hidden = true;
     });
-    link.append(logo);
+    const brand = doc.createElement('strong');
+    brand.textContent = 'AUREXIS';
+    link.append(logo, brand);
   }
 
   footer.append(link);

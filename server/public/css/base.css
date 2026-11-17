@@ -505,10 +505,16 @@ select {
   pointer-events: auto;
 }
 
-/* The Pocket Pager lockup (tile + wordmark), 16px tall: the brand's minimum is 16px. */
+/* The Aurexis mark beside the name. */
 .powered-by img {
   width: auto;
   height: 16px;
+}
+
+.powered-by strong {
+  color: var(--text);
+  font-weight: 700;
+  letter-spacing: 0.12em;
 }
 
 /* Pocket Pager's own pages: the brand's caps line, as on its stacked lockup. */

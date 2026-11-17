@@ -8,7 +8,7 @@ import {
   BG, brandTheme, contrast, extractAccent, hexToRgb, hslToRgb, MONO_COLOR, readableAccent, rgbToHex, rgbToHsl,
 } from '../public/js/color.js';
 import { reviewHtml } from '../public/js/review.js';
-import { mountPoweredBy, AUREXIS_URL, PP_LOCKUP } from '../public/js/powered.js';
+import { mountPoweredBy, AUREXIS_URL, AUREXIS_MARK } from '../public/js/powered.js';
 import { shareMeta } from '../src/views.js';
 import { elapsedLabel, esc, isCashierApp, serverNow, SPLASH_MIN_MS, syncClock } from '../public/js/util.js';
 import { etaText } from '../public/js/queue-text.js';
@@ -101,12 +101,13 @@ describe('Powered by', () => {
     const link = footer.children[0];
     assert.equal(link.href, AUREXIS_URL);
     assert.equal(AUREXIS_URL, 'https://aurexis.cc/');
-    const [label, logo] = link.children;
+    const [label, logo, brand] = link.children;
     assert.equal(label.textContent, 'Powered by');
-    assert.equal(logo.src, PP_LOCKUP);
-    assert.equal(PP_LOCKUP, '/img/brand/lockup-on-dark.svg');
-    assert.equal(logo.alt, 'Pocket Pager');
-    assert.ok(fs.existsSync(path.join(root, 'public', PP_LOCKUP)), 'the lockup is served');
+    assert.equal(logo.src, AUREXIS_MARK);
+    assert.equal(AUREXIS_MARK, '/img/brand/aurexis-mark.svg');
+    assert.equal(logo.alt, '');
+    assert.equal(brand.textContent, 'AUREXIS');
+    assert.ok(fs.existsSync(path.join(root, 'public', AUREXIS_MARK)), 'the mark is served');
     assert.equal(mountPoweredBy(doc), footer, 'idempotent');
     assert.equal(doc.body.children.length, 1);
   });
