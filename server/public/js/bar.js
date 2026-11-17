@@ -7,7 +7,7 @@ import { api, elapsedLabel, esc, holdReloadWhile, reloadOnNewVersion, shopIdFrom
 
 const LONG_PRESS_MS = 500;
 const MOVE_CANCEL_PX = 10;
-const STATUS_LABEL = { preparing: 'بيتحضّر', ready: 'جاهز' };
+const STATUS_LABEL = { preparing: 'بيتحضّر', ready: 'جاهز', out_for_delivery: 'في الطريق' };
 const LATE_CHIME_KEY = 'sp:late-chime';
 
 const $ = (id) => document.getElementById(id);
@@ -39,6 +39,16 @@ function sorted() {
 
 // Loyalty reward attached to the order and not handed over yet.
 const hasReward = (o) => Boolean(o.reward && !o.reward.redeemed);
+
+// Delivery (owner setting): the branch's drivers, for «خرج للتوصيل».
+let deliveryOn = false;
+let drivers = [];
+const isDelivery = (o) => o.type === 'delivery';
+
+// The message the delivery customer gets on WhatsApp, with the order's own link.
+const waUrl = (o) => `https://wa.me/${o.customer.wa}?text=${encodeURIComponent(
+  `أهلًا، طلبك رقم ${receiptNo(o)} من ${o.shopName} بيتحضّر. تابعه من هنا، وهيجيلك تنبيه أول ما يخرج مع المندوب:\n${o.link}`,
+)}`;
 
 // The stamp card on one product (owner setting; null = a stamp with every order).
 let stampProduct = null;
@@ -79,9 +89,10 @@ const pickedToast = (o, updated, product) => {
 
 function tileHtml(o) {
   const late = isLate(o);
-  const icon = o.status === 'ready' ? icons.bell(14) : icons.clock(14);
+  const icon = o.status === 'ready' ? icons.bell(14) : o.status === 'out_for_delivery' ? icons.scooter(14) : icons.clock(14);
   const rings = o.status === 'ready' && o.notifyCount > 1 ? ` ×${o.notifyCount}` : '';
-  const label = late ? 'متأخر' : STATUS_LABEL[o.status];
+  let label = late ? 'متأخر' : STATUS_LABEL[o.status];
+  if (o.status === 'out_for_delivery' && o.driver) label = `مع ${o.driver.name}`;
   const gift = hasReward(o);
   return `
     <button class="tile${fresh.has(o.id) ? ' is-new' : ''}${late ? ' is-late' : ''}" role="listitem" type="button"
@@ -90,6 +101,7 @@ function tileHtml(o) {
       ${gift ? `<span class="tile-gift" title="عليه مكافأة">${icons.gift(16)}</span>` : ''}
       <span class="tile-num num">${esc(receiptNo(o))}</span>
       ${o.receipt ? `<span class="tile-receipt">فاتورة <span class="num">${esc(o.receipt)}</span></span>` : ''}
+      ${isDelivery(o) ? `<span class="tile-type">${icons.scooter(16)}توصيل${o.customer ? ` <span class="num" dir="ltr">${esc(o.customer.phone)}</span>` : ''}</span>` : ''}
       <span class="tile-foot">
         <span class="tile-status">${icon}${esc(label)}${esc(rings)}</span>
         <span>${esc(elapsedLabel(o.createdAt))}</span>
@@ -113,8 +125,9 @@ function renderGrid() {
   $('grid').innerHTML = list.map(tileHtml).join('');
   $('empty').hidden = list.length > 0;
   const ready = list.filter((o) => o.status === 'ready').length;
+  const onTheWay = list.filter((o) => o.status === 'out_for_delivery').length;
   $('board-meta').textContent = list.length
-    ? `${list.length} طلب مفتوح، منهم ${ready} جاهز`
+    ? `${list.length} طلب مفتوح، منهم ${ready} جاهز${onTheWay ? ` و${onTheWay} في الطريق` : ''}`
     : '';
   fresh.clear();
 }
@@ -123,7 +136,7 @@ function upsert(o) {
   // Two screens on one branch: an older view (a late reply, a late event) never wins.
   const known = orders.get(o.id);
   if (known && (o.rev ?? 0) < (known.rev ?? 0)) return;
-  if (o.status === 'preparing' || o.status === 'ready') orders.set(o.id, o);
+  if (o.status === 'preparing' || o.status === 'ready' || o.status === 'out_for_delivery') orders.set(o.id, o);
   else orders.delete(o.id);
   if (sheetOrderId === o.id) closeSheet();
   renderGrid();
@@ -149,6 +162,9 @@ let manualMode = false;
 
 function setModes(shop) {
   stampProduct = shop.loyalty?.product ?? null;
+  deliveryOn = Boolean(shop.delivery);
+  $('new-delivery').hidden = !deliveryOn;
+  $('delivery-help').hidden = !deliveryOn;
   manualMode = Boolean(shop.manualNumbers);
   $('manual').hidden = !manualMode;
   $('manual-help').hidden = !manualMode;
@@ -219,6 +235,93 @@ async function cancelReceipt() {
     toast(err.message, 'error');
   }
   return undefined;
+}
+
+// ---------- delivery ----------
+
+function openDeliverySheet() {
+  const sheet = $('delivery-sheet');
+  $('delivery-form').hidden = false;
+  $('delivery-done').hidden = true;
+  $('delivery-error').hidden = true;
+  $('delivery-phone').value = '';
+  sheet.hidden = false;
+  $('delivery-phone').focus();
+}
+
+async function createDelivery(e) {
+  e.preventDefault();
+  const button = $('delivery-form').querySelector('[type=submit]');
+  button.disabled = true;
+  $('delivery-error').hidden = true;
+  try {
+    const order = await api(`${base}/orders`, { method: 'POST', body: { type: 'delivery', phone: $('delivery-phone').value } });
+    upsert(order);
+    $('delivery-form').hidden = true;
+    $('delivery-done').hidden = false;
+    $('delivery-done-text').textContent = `طلب رقم ${receiptNo(order)} اتعمل. ابعت للعميل لينك المتابعة على واتساب.`;
+    const wa = $('delivery-wa');
+    wa.href = waUrl(order);
+    wa.innerHTML = `${icons.chat(20)}<span>ابعت اللينك على واتساب</span>`;
+    wa.focus();
+  } catch (err) {
+    $('delivery-error').textContent = err.message;
+    $('delivery-error').hidden = false;
+    $('delivery-phone').focus();
+  } finally {
+    button.disabled = false;
+  }
+}
+
+/** «خرج للتوصيل»: pick the driver; with a one-product stamp card, the cashier is asked too. */
+function openDispatch(id) {
+  const o = orders.get(id);
+  if (!o) return;
+  const sheet = $('dispatch-sheet');
+  const go = $('dispatch-go');
+  const select = $('dispatch-driver');
+  $('dispatch-title').textContent = `رقم ${receiptNo(o)} خرج للتوصيل`;
+  $('dispatch-error').hidden = true;
+  $('dispatch-field').hidden = !drivers.length;
+  $('dispatch-sub').textContent = drivers.length
+    ? 'اختار المندوب اللي خارج بالطلب. العميل هيشوف اسمه ويقدر يكلّمه لحد ما يوصل.'
+    : 'مفيش مناديب للفرع ده. صاحب البراند يضيفهم من «المناديب» في لوحته.';
+  select.innerHTML = drivers.map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join('');
+  go.hidden = !drivers.length;
+  go.innerHTML = `${icons.scooter(20)}<span>خرج للتوصيل</span>`;
+  go.onclick = async () => {
+    const driverId = Number(select.value);
+    const driver = drivers.find((d) => d.id === driverId);
+    sheet.hidden = true;
+    let product;
+    if (asksProduct(o)) {
+      product = await askProduct(o);
+      if (product === null) return;
+    }
+    const updated = await act(id, 'dispatch', { driverId, ...(product ? { product: true } : {}) });
+    if (updated) toast(`رقم ${receiptNo(updated)} خرج مع ${driver?.name ?? 'المندوب'}${product ? '، والعميل خد ختم' : ''}`);
+  };
+  sheet.hidden = false;
+  (drivers.length ? select : sheet.querySelector('[data-close]')).focus();
+}
+
+function bindDeliverySheets() {
+  $('new-delivery').innerHTML = `${icons.scooter(20)}<span>توصيل جديد</span>`;
+  $('new-delivery').addEventListener('click', openDeliverySheet);
+  $('delivery-form').addEventListener('submit', createDelivery);
+  for (const id of ['delivery-sheet', 'dispatch-sheet']) {
+    const sheet = $(id);
+    sheet.addEventListener('click', (e) => {
+      if (e.target === sheet || e.target.closest('[data-close]')) sheet.hidden = true;
+      // WhatsApp opened: the sheet's job is done.
+      if (e.target.closest('#delivery-wa')) setTimeout(() => { sheet.hidden = true; }, 300);
+    });
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    $('delivery-sheet').hidden = true;
+    $('dispatch-sheet').hidden = true;
+  });
 }
 
 // Order QR mode: the order exists now; the customer screen shows its QR.
@@ -305,6 +408,10 @@ async function flushQueue() {
       try {
         if (item.kind === 'status') {
           await api(`${base}/orders/${encodeURIComponent(item.id)}/status`, { method: 'POST', body: { status: item.status, ...(item.from ? { from: item.from } : {}), ...(item.product ? { product: true } : {}) } });
+        } else if (item.kind === 'dispatch') {
+          await api(`${base}/orders/${encodeURIComponent(item.id)}/dispatch`, {
+            method: 'POST', body: { driverId: item.driverId, ...(item.from ? { from: item.from } : {}), ...(item.product ? { product: true } : {}) },
+          });
         } else {
           await api(`${base}/counter`, { method: 'POST', body: { delta: item.delta }, headers: { 'x-request-id': item.rid } });
         }
@@ -340,6 +447,12 @@ async function act(id, path, body) {
     }
     // Status changes wait for the connection; the screen moves on right away.
     const o = orders.get(id);
+    if (isOffline(err) && o && path === 'dispatch') {
+      enqueue({ kind: 'dispatch', id, from: seen, driverId: body.driverId, ...(body.product ? { product: true } : {}) });
+      const d = drivers.find((x) => x.id === body.driverId);
+      upsert({ ...o, status: 'out_for_delivery', driver: d ? { name: d.name } : null });
+      return null;
+    }
     const status = path === 'advance' ? NEXT_STATUS[o?.status] : body?.status;
     if (isOffline(err) && o && status) {
       enqueue({ kind: 'status', id, status, from: seen, ...(body?.product ? { product: true } : {}) });
@@ -355,6 +468,16 @@ async function act(id, path, body) {
 async function advance(id) {
   const o = orders.get(id);
   if (!o) return;
+  // Delivery: the first tap sends it out with a driver, the next one says it arrived.
+  if (isDelivery(o)) {
+    if (o.status === 'preparing') {
+      openDispatch(id);
+      return;
+    }
+    const done = await act(id, 'advance');
+    if (done?.status === 'picked') toast(`رقم ${receiptNo(done)} وصل`);
+    return;
+  }
   let product;
   if (o.status === 'ready' && asksProduct(o)) {
     product = await askProduct(o);
@@ -381,9 +504,15 @@ function openSheet(id) {
       b.hidden = o.status !== 'ready';
     } else if (a === 'preparing') {
       b.innerHTML = `${icons.undo()}<span>رجّعه للتحضير</span>`;
-      b.hidden = o.status !== 'ready';
+      b.hidden = o.status !== 'ready' && o.status !== 'out_for_delivery';
+    } else if (a === 'dispatch') {
+      b.innerHTML = `${icons.scooter()}<span>خرج للتوصيل</span>`;
+      b.hidden = !isDelivery(o) || o.status !== 'preparing';
+    } else if (a === 'whatsapp') {
+      b.innerHTML = `${icons.chat()}<span>ابعت اللينك على واتساب تاني</span>`;
+      b.hidden = !isDelivery(o) || !o.customer;
     } else if (a === 'picked') {
-      b.innerHTML = `${icons.bag()}<span>اتسلّم</span>`;
+      b.innerHTML = isDelivery(o) ? `${icons.check()}<span>وصل</span>` : `${icons.bag()}<span>اتسلّم</span>`;
     } else if (a === 'cancelled') {
       b.innerHTML = `${icons.trash()}<span>إلغاء الطلب</span>`;
       b.dataset.confirm = '';
@@ -411,6 +540,12 @@ async function onSheetAction(button) {
     return undefined;
   }
   closeSheet();
+  if (a === 'dispatch') return openDispatch(id);
+  if (a === 'whatsapp') {
+    const o = orders.get(id);
+    if (o?.customer) window.open(waUrl(o), '_blank', 'noopener');
+    return undefined;
+  }
   if (a === 'renotify') {
     const o = await act(id, 'renotify');
     if (o) toast(`رنّينا على رقم ${receiptNo(o)} تاني`);
@@ -420,12 +555,13 @@ async function onSheetAction(button) {
   } else if (a === 'picked') {
     const before = orders.get(id);
     let product;
-    if (before && asksProduct(before)) {
+    // Delivery: the stamp was settled when it left.
+    if (before && !isDelivery(before) && asksProduct(before)) {
       product = await askProduct(before);
       if (product === null) return undefined;
     }
     const o = await act(id, 'status', { status: a, ...(product ? { product: true } : {}) });
-    if (o && before) toast(pickedToast(before, o, product));
+    if (o && before) toast(isDelivery(before) ? `رقم ${receiptNo(o)} وصل` : pickedToast(before, o, product));
   } else {
     const o = await act(id, 'status', { status: a });
     if (o && a === 'cancelled') toast(`طلب ${receiptNo(o)} اتلغى`);
@@ -559,6 +695,7 @@ function applyState(state) {
   renderPlan(state.plan);
   renderCounter(state.counter);
   lateAfterMs = (state.shop.lateAfterMinutes ?? 10) * 60_000;
+  drivers = state.drivers ?? [];
   setModes(state.shop);
   $('shop-name').textContent = state.shop.name;
   document.title = `الطلبات — ${state.shop.name}`;
@@ -587,6 +724,7 @@ async function boot() {
   bindGrid();
   $('count-plus').addEventListener('click', () => adjustCount(1));
   $('new-order').addEventListener('click', newOrder);
+  bindDeliverySheets();
   $('manual').addEventListener('submit', addReceipt);
   $('manual-cancel').addEventListener('click', cancelReceipt);
   $('count-minus').addEventListener('click', () => adjustCount(-1));
@@ -614,6 +752,10 @@ async function boot() {
           chime.play('order');
         }
         upsert(order);
+      },
+      // The owner changed the branch's drivers.
+      drivers: (list) => {
+        drivers = list;
       },
       shop: (shop) => {
         $('shop-name').textContent = shop.name;

@@ -365,3 +365,51 @@
   background: var(--accent);
   color: var(--on-accent);
 }
+
+/* Delivery: «توصيل جديد», the tiles of delivery orders, the sheets. */
+.new-delivery {
+  min-height: 52px;
+  margin-top: -4px;
+  gap: 8px;
+  font-weight: 600;
+  touch-action: manipulation;
+}
+
+.new-delivery .icon {
+  width: 20px;
+  height: 20px;
+}
+
+.tile-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.tile-type .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.tile[data-status='out_for_delivery'] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+}
+
+.tile[data-status='out_for_delivery'] .tile-type,
+.tile[data-status='out_for_delivery'] .tile-foot {
+  color: var(--text);
+}
+
+#delivery-sheet .field,
+#dispatch-sheet .field {
+  margin-bottom: 12px;
+}
+
+#delivery-wa .icon {
+  width: 20px;
+  height: 20px;
+}
