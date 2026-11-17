@@ -4,6 +4,8 @@ import crypto from 'node:crypto';
 // Every role/tenant gets its own key, derived with HKDF from COOKIE_SECRET, so a cookie
 // minted for branch A cannot verify for branch B even with an identical payload.
 
+// The product's old name, kept: every key (sessions, loyalty devices, sealed PINs and passwords)
+// derives from it, so changing it would sign everyone out and lose them all.
 const SALT = 'smart-pager/v2';
 const keys = new Map();
 

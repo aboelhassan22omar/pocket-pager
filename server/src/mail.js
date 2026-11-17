@@ -67,7 +67,7 @@ export function buildMessage({ from, to, subject, text, date = new Date() }) {
     `To: ${to.map(clean).join(', ')}`,
     `Subject: ${encodeHeader(subject)}`,
     `Date: ${date.toUTCString()}`,
-    `Message-ID: <${randomId(12)}@smart-pager>`,
+    `Message-ID: <${randomId(12)}@pocket-pager>`,
     'MIME-Version: 1.0',
     'Content-Type: text/plain; charset=UTF-8',
     'Content-Transfer-Encoding: base64',
@@ -88,7 +88,7 @@ export async function sendMail(cfg, { to, subject, text }) {
   const say = (line) => socket.write(`${line}\r\n`);
   try {
     await expect(220);
-    say('EHLO smart-pager');
+    say('EHLO pocket-pager');
     await expect(250);
     if (cfg.tls === 'starttls') {
       say('STARTTLS');
@@ -99,7 +99,7 @@ export async function sendMail(cfg, { to, subject, text }) {
         secure.once('error', reject);
       });
       rd = reader(socket);
-      say('EHLO smart-pager');
+      say('EHLO pocket-pager');
       await expect(250);
     }
     if (cfg.user) {

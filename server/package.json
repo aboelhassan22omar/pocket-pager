@@ -1,7 +1,7 @@
 {
-  "name": "smart-pager",
+  "name": "pocket-pager",
   "version": "1.0.0",
-  "description": "Smart Pager by Aurexis — no-app pager for cafés and restaurants",
+  "description": "Pocket Pager by Aurexis — no-app pager for cafés and restaurants",
   "private": true,
   "type": "module",
   "engines": {

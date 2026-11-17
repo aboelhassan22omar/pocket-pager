@@ -27,6 +27,7 @@ function backupS3(env) {
     secretAccessKey: str(env.BACKUP_S3_SECRET_ACCESS_KEY, ''),
   };
   if (Object.values(s3).some((v) => !v)) return null;
+  // The product's old name, kept: the existing backups live under it (set BACKUP_S3_PREFIX to move).
   const prefix = str(env.BACKUP_S3_PREFIX, 'smart-pager').replace(/^\/+|\/+$/g, '');
   return { ...s3, prefix: prefix ? `${prefix}/` : '' };
 }

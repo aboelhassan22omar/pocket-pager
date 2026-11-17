@@ -93,7 +93,7 @@ docs/DESIGN.md  docker-compose.yml  Caddyfile  .env.example  README.md
 
 ## 10. Status of v1
 
-Shipped and running at `https://pager.aurexis.cc`. The repo is `aboelhassan22omar/smart-pager`, and the defaults above were accepted. Since the first release, v1 has also gained these:
+Shipped and running at `https://pager.aurexis.cc`. The repo is `aboelhassan22omar/pocket-pager` (it was `smart-pager`), and the defaults above were accepted. Since the first release, v1 has also gained these:
 - **CI/CD:** CI runs once per PR, and CD skips it for verified merges and deploys only what changed.
 - **Shop identity:** a shop accent extracted from the logo, and a bigger logo.
 - **Google review:** a Google review button after pickup (#9).

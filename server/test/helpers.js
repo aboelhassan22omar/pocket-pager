@@ -26,7 +26,7 @@ function freePort() {
 // Spawns the real server on a temp DATA_DIR (or a pre-seeded one) and waits for /health.
 // With `expectExit`, waits for the process to exit instead and resolves {code, output}.
 export async function startServer(env = {}, { dataDir: seeded, expectExit = false } = {}) {
-  const dataDir = seeded ?? fs.mkdtempSync(path.join(os.tmpdir(), 'smart-pager-'));
+  const dataDir = seeded ?? fs.mkdtempSync(path.join(os.tmpdir(), 'pocket-pager-'));
   const port = await freePort();
   const url = `http://127.0.0.1:${port}`;
   const proc = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', SERVER], {
