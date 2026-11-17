@@ -58,7 +58,8 @@ export const publicShop = (shop, { today } = {}) => ({
   // «شارك الطلب»: the order's link for someone with the customer (off = one phone per order).
   orderShare: shop.order_share == null ? true : Boolean(shop.order_share),
   // Stamp card rule (phase 6); the device's own count comes from GET /loyalty.
-  loyalty: loyaltyEnabled(shop) ? { every: shop.loyalty_every, rewardText: shop.loyalty_reward_text ?? '' } : null,
+  // product: the card counts this product only (the cashier is asked at handover); null = every order.
+  loyalty: loyaltyEnabled(shop) ? { every: shop.loyalty_every, rewardText: shop.loyalty_reward_text ?? '', product: shop.loyalty_product ?? null } : null,
   promo: today ? promoView(shop, today) : null,
 });
 
@@ -84,6 +85,8 @@ export const publicOrder = (order, shop) => ({
   notifyCount: order.notify_count,
   rev: order.rev ?? 0,
   reward: orderReward(order, shop),
+  // The customer has a stamp card on this order (it gets a stamp at handover).
+  card: loyaltyEnabled(shop) && Boolean(order.device_hash),
 });
 
 export const barShop = (shop) => ({

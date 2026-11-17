@@ -339,6 +339,7 @@ describe('loyalty card markup', () => {
     assert.match(loyaltyHtml(card, { orderReward: { text: 'قهوة', redeemed: false } }), /قولها للكاشير/);
     assert.match(loyaltyHtml(card, { orderReward: { text: 'قهوة', redeemed: true } }), /استلمت مكافأتك/);
     assert.match(loyaltyHtml({ ...card, rewards: 1 }), /طلبك الجاي/);
+    assert.match(loyaltyHtml({ ...card, product: 'لاتيه' }), /اطلب لاتيه 5 مرات وخد قهوة &lt;b&gt;ببلاش/, 'the card on one product');
   });
 });
 
@@ -418,7 +419,7 @@ describe('loyalty over HTTP', () => {
     assert.equal((await g.ownerSettings({ features: { loyalty: true } })).data.field, 'loyaltyRewardText');
     const res = await g.ownerSettings({ loyaltyEvery: 2, loyaltyRewardText: 'قهوة ببلاش', features: { loyalty: true } });
     assert.equal(res.status, 200);
-    assert.deepEqual((await phone.get(`/api/b/${BR}`)).data.loyalty, { every: 2, rewardText: 'قهوة ببلاش' });
+    assert.deepEqual((await phone.get(`/api/b/${BR}`)).data.loyalty, { every: 2, rewardText: 'قهوة ببلاش', product: null });
   });
 
   test('device token: httpOnly cookie scoped to the branch API, stored only as a hash', async () => {
@@ -498,6 +499,34 @@ describe('loyalty over HTTP', () => {
     await g.ownerSettings({ features: { loyalty: true } });
     const after = (await loyalty(client(g.server.url), { 'x-device-token': phone.token })).data;
     assert.deepEqual(after, before);
+  });
+
+  test('the card on one product: the cashier says at handover, a stamp only for "yes"', async () => {
+    assert.equal((await g.ownerSettings({ loyaltyProduct: 'x'.repeat(41) })).data.field, 'loyaltyProduct');
+    assert.equal((await g.ownerSettings({ loyaltyProduct: '  لاتيه  ' })).status, 200);
+    assert.equal((await phone.get(`/api/b/${BR}`)).data.loyalty.product, 'لاتيه');
+    assert.equal((await g.staff.get(`/api/bar/${BR}/state`)).data.shop.loyalty.product, 'لاتيه', 'the bar knows to ask');
+
+    const customer = client(g.server.url);
+    const a = (await claimBy(customer)).data;
+    const b = (await claimBy(customer)).data;
+    const card = async () => (await loyalty(customer)).data;
+    const onBar = (await g.staff.get(`/api/bar/${BR}/state`)).data.orders.find((o) => o.id === a.id);
+    assert.equal(onBar.card, true, 'this order has a stamp card');
+
+    await staffPost(a.id, 'advance');
+    await staffPost(a.id, 'advance'); // handed over: "no"
+    assert.equal((await card()).stamps, 0, 'without the product: no stamp');
+    await staffPost(b.id, 'advance');
+    await staffPost(b.id, 'advance', { product: true }); // "yes"
+    assert.deepEqual([(await card()).stamps, (await card()).product], [1, 'لاتيه']);
+
+    // Empty again: a stamp with every order.
+    await g.ownerSettings({ loyaltyProduct: '' });
+    assert.equal((await phone.get(`/api/b/${BR}`)).data.loyalty.product, null);
+    const c = (await claimBy(customer)).data;
+    await staffPost(c.id, 'status', { status: 'picked' });
+    assert.equal((await card()).rewards, 1, 'the second stamp earns the reward');
   });
 
   test('device hashes are per branch', () => {

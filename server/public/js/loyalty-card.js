@@ -29,6 +29,8 @@ export function loyaltyHtml(card, { orderReward = null, closed = false } = {}) {
       <p class="loyalty-count"><span class="num">${stamps}</span> من <span class="num">${every}</span></p>
     </div>
     <div class="stamps" role="img" aria-label="${stamps} ختم من ${every}">${dots}</div>
-    <p class="loyalty-rule">${esc(t('loyalty_rule', { every, reward: card.rewardText }))}</p>
+    <p class="loyalty-rule">${esc(card.product
+    ? t('loyalty_rule_product', { every, reward: card.rewardText, product: card.product })
+    : t('loyalty_rule', { every, reward: card.rewardText }))}</p>
     ${note}`;
 }

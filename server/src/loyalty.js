@@ -10,6 +10,7 @@ const COOKIE_MAX_AGE = 400 * 24 * 3600;
 export const DEVICE_CLAIMS = { limit: 3, windowMs: 15 * 60_000 };
 export const LOYALTY_EVERY = { min: 2, max: 20 };
 export const REWARD_TEXT_MAX = 60;
+export const PRODUCT_TEXT_MAX = 40;
 
 export const loyaltyEnabled = (shop) => featureFlags(shop).loyalty;
 export const deviceCookieName = (branchId) => `sp_dev_${branchId}`;
@@ -42,6 +43,7 @@ export function loyaltyView(shop, card) {
   return {
     every: shop.loyalty_every,
     rewardText: shop.loyalty_reward_text ?? '',
+    product: shop.loyalty_product ?? null,
     stamps: card.stamps,
     rewards: card.rewards,
   };

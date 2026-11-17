@@ -180,16 +180,18 @@ export function createService({ control, tenants, bus, notifier, screens, config
     posEvent(ctx, { unread: true, keys });
   }
 
-  function setStatus(ctx, shop, order, status) {
+  /** `product`: at handover, the order has the stamp card's product (when the card is on one). */
+  function setStatus(ctx, shop, order, status, { product = false } = {}) {
     if (!OPEN_STATUSES.includes(order.status)) throw new HttpError(409, 'الطلب ده اتقفل خلاص');
     if (order.status === status) return order;
     const updated = ctx.store.setStatus(order, status);
     publishOrder(ctx, updated, shop);
     if (status === 'ready') scheduleRepeats(ctx.branch.id, order.id);
     else clearRepeats(order.id);
-    // Loyalty: a stamp only when staff hand the order over (never on claim, expiry or review).
+    // Loyalty: a stamp only when staff hand the order over (never on claim, expiry or review),
+    // and with the card on one product, only when the cashier says the order has it.
     if (status === 'picked' && loyaltyEnabled(shop) && updated.device_hash) {
-      ctx.store.stamp(updated, shop.loyalty_every);
+      if (!shop.loyalty_product || product) ctx.store.stamp(updated, shop.loyalty_every);
       const card = loyaltyView(shop, ctx.store.loyaltyCard(updated.device_hash));
       bus.emit(channels(ctx.branch.id).order(order.id), 'loyalty', card);
     }
@@ -204,10 +206,10 @@ export function createService({ control, tenants, bus, notifier, screens, config
     return updated;
   }
 
-  function advance(ctx, shop, order) {
+  function advance(ctx, shop, order, opts) {
     const next = NEXT_STATUS[order.status];
     if (!next) throw new HttpError(409, 'الطلب ده اتقفل خلاص');
-    return setStatus(ctx, shop, order, next);
+    return setStatus(ctx, shop, order, next, opts);
   }
 
   function renotify(ctx, shop, order) {

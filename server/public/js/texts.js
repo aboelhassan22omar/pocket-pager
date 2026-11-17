@@ -51,6 +51,7 @@ export const TEXT_GROUPS = [
     items: [
       ['loyalty_title', 'اسم البطاقة', 'بطاقة الختم'],
       ['loyalty_rule', 'القاعدة ({every} = كل كام طلب، {reward} = الهدية)', 'كل {every} طلبات: {reward}'],
+      ['loyalty_rule_product', 'القاعدة لو الختم على منتج ({product} = المنتج، {every}، {reward})', 'اطلب {product} {every} مرات وخد {reward}'],
       ['loyalty_has', 'معاه هدية على الطلب ده ({reward})', 'عندك مكافأة: {reward}، قولها للكاشير'],
       ['loyalty_used', 'بعد ما ياخد الهدية', 'استلمت مكافأتك، بالهنا'],
       ['loyalty_won', 'لما يكسب هدية ({reward})', 'كسبت {reward}، هتلاقيها في طلبك الجاي'],
