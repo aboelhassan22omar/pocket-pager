@@ -40,6 +40,43 @@ function sorted() {
 // Loyalty reward attached to the order and not handed over yet.
 const hasReward = (o) => Boolean(o.reward && !o.reward.redeemed);
 
+// The stamp card on one product (owner setting; null = a stamp with every order).
+let stampProduct = null;
+const asksProduct = (o) => Boolean(stampProduct && o.card);
+
+/** At handover: does the order have the card's product? true / false, null = not handed over. */
+function askProduct(o) {
+  const sheet = $('stamp-sheet');
+  $('stamp-title').textContent = `رقم ${receiptNo(o)} فيه ${stampProduct}؟`;
+  sheet.querySelector('[data-stamp="yes"]').textContent = `أيوه، فيه ${stampProduct} (ياخد ختم)`;
+  sheet.querySelector('[data-stamp="no"]').textContent = 'لأ، مفيهوش';
+  return new Promise((resolve) => {
+    const done = (value) => {
+      sheet.hidden = true;
+      sheet.onclick = null;
+      document.removeEventListener('keydown', onKey);
+      resolve(value);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') done(null);
+    };
+    sheet.onclick = (e) => {
+      if (e.target === sheet) return done(null);
+      const b = e.target.closest('[data-stamp]');
+      if (b) done(b.dataset.stamp === 'back' ? null : b.dataset.stamp === 'yes');
+      return undefined;
+    };
+    document.addEventListener('keydown', onKey);
+    sheet.hidden = false;
+    sheet.querySelector('[data-stamp="yes"]').focus();
+  });
+}
+
+const pickedToast = (o, updated, product) => {
+  if (hasReward(o)) return `رقم ${receiptNo(updated)} اتسلّم. المكافأة متسلّمتش، هتفضل لطلبه الجاي`;
+  return product ? `رقم ${receiptNo(updated)} اتسلّم، وخد ختم` : `رقم ${receiptNo(updated)} اتسلّم`;
+};
+
 function tileHtml(o) {
   const late = isLate(o);
   const icon = o.status === 'ready' ? icons.bell(14) : icons.clock(14);
@@ -111,6 +148,7 @@ function renderCounter(counter) {
 let manualMode = false;
 
 function setModes(shop) {
+  stampProduct = shop.loyalty?.product ?? null;
   manualMode = Boolean(shop.manualNumbers);
   $('manual').hidden = !manualMode;
   $('manual-help').hidden = !manualMode;
@@ -266,7 +304,7 @@ async function flushQueue() {
       const item = queue[0];
       try {
         if (item.kind === 'status') {
-          await api(`${base}/orders/${encodeURIComponent(item.id)}/status`, { method: 'POST', body: { status: item.status, ...(item.from ? { from: item.from } : {}) } });
+          await api(`${base}/orders/${encodeURIComponent(item.id)}/status`, { method: 'POST', body: { status: item.status, ...(item.from ? { from: item.from } : {}), ...(item.product ? { product: true } : {}) } });
         } else {
           await api(`${base}/counter`, { method: 'POST', body: { delta: item.delta }, headers: { 'x-request-id': item.rid } });
         }
@@ -304,7 +342,7 @@ async function act(id, path, body) {
     const o = orders.get(id);
     const status = path === 'advance' ? NEXT_STATUS[o?.status] : body?.status;
     if (isOffline(err) && o && status) {
-      enqueue({ kind: 'status', id, status, from: seen });
+      enqueue({ kind: 'status', id, status, from: seen, ...(body?.product ? { product: true } : {}) });
       upsert({ ...o, status });
       return null;
     }
@@ -317,11 +355,14 @@ async function act(id, path, body) {
 async function advance(id) {
   const o = orders.get(id);
   if (!o) return;
-  const updated = await act(id, 'advance');
-  if (updated?.status === 'ready') toast(`رقم ${receiptNo(updated)} جاهز. بنرن على العميل`);
-  if (updated?.status === 'picked') {
-    toast(hasReward(o) ? `رقم ${receiptNo(updated)} اتسلّم. المكافأة متسلّمتش، هتفضل لطلبه الجاي` : `رقم ${receiptNo(updated)} اتسلّم`);
+  let product;
+  if (o.status === 'ready' && asksProduct(o)) {
+    product = await askProduct(o);
+    if (product === null) return;
   }
+  const updated = await act(id, 'advance', product ? { product: true } : undefined);
+  if (updated?.status === 'ready') toast(`رقم ${receiptNo(updated)} جاهز. بنرن على العميل`);
+  if (updated?.status === 'picked') toast(pickedToast(o, updated, product));
 }
 
 // ---------- long-press sheet ----------
@@ -376,6 +417,15 @@ async function onSheetAction(button) {
   } else if (a === 'redeem') {
     const o = await act(id, 'redeem');
     if (o) toast(`مكافأة رقم ${receiptNo(o)} اتسجّلت`);
+  } else if (a === 'picked') {
+    const before = orders.get(id);
+    let product;
+    if (before && asksProduct(before)) {
+      product = await askProduct(before);
+      if (product === null) return undefined;
+    }
+    const o = await act(id, 'status', { status: a, ...(product ? { product: true } : {}) });
+    if (o && before) toast(pickedToast(before, o, product));
   } else {
     const o = await act(id, 'status', { status: a });
     if (o && a === 'cancelled') toast(`طلب ${receiptNo(o)} اتلغى`);

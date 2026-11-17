@@ -250,7 +250,7 @@ export default async function barRoutes(app, deps) {
     bar.post('/orders/:id/advance', async (req) => {
       const order = shopOrder(req);
       sameAsSeen(req, order);
-      return publicOrder(service.advance(req.ctx, req.shop, order), req.shop);
+      return publicOrder(service.advance(req.ctx, req.shop, order, { product: req.body?.product === true }), req.shop);
     });
 
     bar.post('/orders/:id/status', async (req) => {
@@ -258,7 +258,7 @@ export default async function barRoutes(app, deps) {
       if (!STATUS_TARGETS.includes(status)) throw invalid('status', 'الحالة دي مش معروفة');
       const order = shopOrder(req);
       sameAsSeen(req, order);
-      return publicOrder(service.setStatus(req.ctx, req.shop, order, status), req.shop);
+      return publicOrder(service.setStatus(req.ctx, req.shop, order, status, { product: req.body?.product === true }), req.shop);
     });
 
     bar.post('/orders/:id/renotify', async (req) => publicOrder(service.renotify(req.ctx, req.shop, shopOrder(req)), req.shop));

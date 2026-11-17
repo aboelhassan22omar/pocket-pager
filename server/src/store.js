@@ -13,7 +13,7 @@ export const ORDER_ID_RE = /^[A-Za-z0-9_-]{16,64}$/;
 const SETTING_COLUMNS = new Set([
   'logo', 'pin_hash', 'pin_sealed', 'qr_mode', 'static_key', 'max_number', 'expire_hours',
   'preparing_message', 'ready_message', 'accent_color', 'google_review_url', 'late_after_minutes',
-  'google_place_id', 'loyalty_every', 'loyalty_reward_text',
+  'google_place_id', 'loyalty_every', 'loyalty_reward_text', 'loyalty_product',
   'promo_text', 'promo_image', 'promo_starts_at', 'promo_ends_at',
   'pos_token', 'pos_last_event', 'theme_version', 'pos_only', 'order_qr', 'order_share',
   'manual_numbers', 'print_agent', 'print_last', 'message_box',

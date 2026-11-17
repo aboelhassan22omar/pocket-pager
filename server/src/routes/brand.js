@@ -8,7 +8,7 @@ import { cleanTexts } from '../../public/js/texts.js';
 import { cleanEmail, cleanPhone } from '../contact.js';
 import { DEMO_LOCKED, isDemo } from '../demo.js';
 import { HttpError } from '../errors.js';
-import { LOYALTY_EVERY, REWARD_TEXT_MAX } from '../loyalty.js';
+import { LOYALTY_EVERY, PRODUCT_TEXT_MAX, REWARD_TEXT_MAX } from '../loyalty.js';
 import { createRateLimiter } from '../ratelimit.js';
 import {
   AUDIO_MIME, AUDIO_TYPES, clearRingFiles, RING_FILE_MAX_BYTES, RING_FILE_RE, RING_IDS, ringView, sniffAudio,
@@ -48,6 +48,12 @@ export function ownerExtraFields(body) {
     const text = typeof body.loyaltyRewardText === 'string' ? body.loyaltyRewardText.trim() : '';
     if (text.length > REWARD_TEXT_MAX) throw new HttpError(400, `الهدية لحد ${REWARD_TEXT_MAX} حرف`, { field: 'loyaltyRewardText' });
     fields.loyalty_reward_text = text || null;
+  }
+  // The card on one product (empty = every order).
+  if ('loyaltyProduct' in body) {
+    const text = typeof body.loyaltyProduct === 'string' ? body.loyaltyProduct.trim() : '';
+    if (text.length > PRODUCT_TEXT_MAX) throw new HttpError(400, `اسم المنتج لحد ${PRODUCT_TEXT_MAX} حرف`, { field: 'loyaltyProduct' });
+    fields.loyalty_product = text || null;
   }
   if ('promoText' in body) {
     const text = typeof body.promoText === 'string' ? body.promoText.trim() : '';

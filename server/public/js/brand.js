@@ -557,9 +557,13 @@ function featureFields(b) {
       hint: 'العميل يقدر يكتب شكوى أو اقتراح، والرسايل بتوصلك في التحليلات. رسالة واحدة لكل طلب', value: b.messageBox,
     },
     { type: 'heading', label: 'بطاقة الختم' },
-    featureToggle(b, 'loyalty', 'ختم مع كل طلب', 'العميل بياخد ختم لما يستلم، وهدية كل كام طلب'),
-    { name: 'loyaltyEvery', label: 'الهدية كل كام طلب', type: 'number', inputmode: 'numeric', dir: 'ltr', value: b.loyaltyEvery, hint: 'من 2 لـ 20' },
+    featureToggle(b, 'loyalty', 'بطاقة ختم للعملاء', 'العميل بياخد ختم لما يستلم، وهدية كل كام ختم'),
+    { name: 'loyaltyEvery', label: 'الهدية كل كام ختم', type: 'number', inputmode: 'numeric', dir: 'ltr', value: b.loyaltyEvery, hint: 'من 2 لـ 20' },
     { name: 'loyaltyRewardText', label: 'الهدية', value: b.loyaltyRewardText, placeholder: 'مثلًا: مشروب ببلاش', maxlength: 60 },
+    {
+      name: 'loyaltyProduct', label: 'الختم على منتج واحد (اختياري)', value: b.loyaltyProduct ?? '', placeholder: 'مثلًا: لاتيه', maxlength: 40,
+      hint: 'سيبه فاضي = ختم مع كل طلب. لو كتبت منتج، الكاشير بيتسأل وهو بيسلّم «الطلب فيه المنتج ده؟» والعميل بياخد الختم بس لو أيوه. كده بتزوّد مبيعات المنتج ده',
+    },
     { type: 'heading', label: 'كود لكل طلب' },
     {
       name: 'orderQr', type: 'toggle', label: 'شاشة العميل بتعرض كود الطلب',
@@ -597,6 +601,7 @@ function featureBody(b, v) {
     googlePlaceId: v.googlePlaceId ?? '',
     loyaltyEvery: Number(v.loyaltyEvery),
     loyaltyRewardText: v.loyaltyRewardText ?? '',
+    loyaltyProduct: v.loyaltyProduct ?? '',
     promoText: v.promoText ?? '',
     promoStartsAt: v.promoStartsAt ?? '',
     promoEndsAt: v.promoEndsAt ?? '',

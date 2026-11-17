@@ -83,6 +83,7 @@ function branchSummary(deps, branch, now, { withPin = false, apps = {} } = {}) {
     legacyReviewUrl: shop?.google_review_url ?? null,
     loyaltyEvery: shop?.loyalty_every ?? 5,
     loyaltyRewardText: shop?.loyalty_reward_text ?? '',
+    loyaltyProduct: shop?.loyalty_product ?? '',
     promoText: shop?.promo_text ?? '',
     orderQr: Boolean(shop?.order_qr),
     manualNumbers: Boolean(shop?.manual_numbers),

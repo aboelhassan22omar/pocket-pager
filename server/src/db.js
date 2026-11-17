@@ -186,6 +186,11 @@ export const BRANCH_MIGRATIONS = [
   );
   CREATE INDEX messages_created_at ON messages (created_at);
   `,
+  // 14: the stamp card on one product (NULL = every order): at handover the cashier says
+  //     whether the order has it, and only then the customer gets a stamp.
+  `
+  ALTER TABLE branch_settings ADD COLUMN loyalty_product TEXT;
+  `,
 ];
 
 export function openBranchDb(file, { backupFile } = {}) {
