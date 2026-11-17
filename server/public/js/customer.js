@@ -6,7 +6,7 @@ import { loyaltyHtml } from './loyalty-card.js';
 import { aheadText, etaText } from './queue-text.js';
 import { applyTexts, setTexts, t } from './texts.js';
 import { reviewHtml } from './review.js';
-import { api, base64UrlToBytes, elapsedLabel, esc, isIOS, shopIdFromPath, sleep, SPLASH_MIN_MS } from './util.js';
+import { api, base64UrlToBytes, elapsedLabel, esc, isIOS, shopIdFromPath, sleep, SPLASH_MIN_MS, syncClock } from './util.js';
 import { keepAwake, releaseAwake } from './wakelock.js';
 
 const CLOSED = ['picked', 'expired', 'cancelled'];
@@ -146,6 +146,7 @@ function tellDemo() {
 }
 
 function render() {
+  syncClock(order.serverNow);
   tellDemo();
   const card = $('card');
   card.dataset.status = order.status;
@@ -442,6 +443,17 @@ function connect() {
     startRinging();
   });
 }
+
+// The phone says the network went or came back: show it now, and on return catch up at once
+// (the live stream would only notice later).
+addEventListener('offline', () => {
+  if (order && !CLOSED.includes(order.status)) setOnline(false);
+});
+addEventListener('online', () => {
+  if (!order || CLOSED.includes(order.status)) return;
+  refresh();
+  connect();
+});
 
 // ---------- enable alerts ----------
 

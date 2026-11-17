@@ -3,7 +3,7 @@ import { watchAppUpdates } from './app-update.js';
 import { accentFromImage, applyTheme } from './color.js';
 import { icons } from './icons.js';
 import { loadStaffState, staffEvents, toast } from './staff.js';
-import { api, elapsedLabel, esc, holdReloadWhile, reloadOnNewVersion, shopIdFromPath } from './util.js';
+import { api, elapsedLabel, esc, holdReloadWhile, reloadOnNewVersion, serverNow, shopIdFromPath, syncClock } from './util.js';
 
 const LONG_PRESS_MS = 500;
 const MOVE_CANCEL_PX = 10;
@@ -29,7 +29,7 @@ const lateChimeOn = () => {
 };
 // What the receipt says: "2-1008" from a POS with several terminals, else the number.
 const receiptNo = (o) => o.ref ?? String(o.number);
-const isLate = (o, now = Date.now()) => o.status === 'preparing' && now - o.createdAt > lateAfterMs;
+const isLate = (o, now = serverNow()) => o.status === 'preparing' && now - o.createdAt > lateAfterMs;
 
 // ---------- render ----------
 
@@ -103,7 +103,7 @@ function tileHtml(o) {
       ${o.receipt ? `<span class="tile-receipt">فاتورة <span class="num">${esc(o.receipt)}</span></span>` : ''}
       ${isDelivery(o) ? `<span class="tile-type">${icons.scooter(16)}توصيل${o.customer ? ` <span class="num" dir="ltr">${esc(o.customer.phone)}</span>` : ''}</span>` : ''}
       <span class="tile-foot">
-        <span class="tile-status">${icon}${esc(label)}${esc(rings)}</span>
+        <span class="tile-status">${icon}<span class="tile-label">${esc(label)}${esc(rings)}</span></span>
         <span>${esc(elapsedLabel(o.createdAt))}</span>
       </span>
     </button>`;
@@ -373,7 +373,9 @@ let queue = [];
 let flushing = false;
 
 try {
-  queue = JSON.parse(localStorage.getItem(QUEUE_KEY) ?? '[]');
+  const saved = JSON.parse(localStorage.getItem(QUEUE_KEY) ?? '[]');
+  // Only well-formed taps (a damaged entry would block the whole queue).
+  queue = Array.isArray(saved) ? saved.filter((x) => x && typeof x === 'object' && typeof x.kind === 'string') : [];
 } catch {
   queue = [];
 }
@@ -465,9 +467,18 @@ async function act(id, path, body) {
   }
 }
 
+// A quick double tap would make an order ready and hand it over at once (the customer never
+// rings): a second tap on the same tile right after the first is taken as the same tap.
+const DOUBLE_TAP_MS = 1200;
+const lastTap = new Map(); // order id -> when its tile was last tapped
+
 async function advance(id) {
   const o = orders.get(id);
   if (!o) return;
+  const now = Date.now();
+  if (now - (lastTap.get(id) ?? 0) < DOUBLE_TAP_MS) return;
+  lastTap.set(id, now);
+  if (lastTap.size > 200) lastTap.delete(lastTap.keys().next().value);
   // Delivery: the first tap sends it out with a driver, the next one says it arrived.
   if (isDelivery(o)) {
     if (o.status === 'preparing') {
@@ -690,6 +701,7 @@ function readLogoColorOnce(shop) {
 }
 
 function applyState(state) {
+  syncClock(state.serverNow);
   applyTheme(document.documentElement, state.shop.theme);
   readLogoColorOnce(state.shop);
   renderPlan(state.plan);

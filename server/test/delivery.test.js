@@ -245,6 +245,32 @@ describe('delivery over HTTP', () => {
     await owners.dlva.post('/api/brand/dlva/branches/dlva-a/settings', { loyaltyProduct: '', features: { loyalty: false } });
   });
 
+  test('delivery turned off with orders still out: they can still leave and arrive', async () => {
+    await owners.dlva.post('/api/brand/dlva/branches/dlva-a/settings', { delivery: true });
+    const o = await newDelivery();
+    await owners.dlva.post('/api/brand/dlva/branches/dlva-a/settings', { delivery: false });
+    const state = (await bar.get('/api/bar/dlva-a/state')).data;
+    assert.equal(state.shop.delivery, false);
+    assert.ok(state.drivers.length > 0, 'the drivers are still there for the open orders');
+    assert.equal((await bar.post(orders('dlva-a'), { type: 'delivery', phone: '01012345678' })).status, 409, 'no new ones');
+    assert.equal((await bar.post(`${orders('dlva-a')}/${o.id}/dispatch`, { driverId: state.drivers[0].id })).status, 200);
+    assert.equal((await bar.post(`${orders('dlva-a')}/${o.id}/advance`, {})).data.status, 'picked');
+    await owners.dlva.post('/api/brand/dlva/branches/dlva-a/settings', { delivery: true });
+  });
+
+  test('a JSON body that is not an object ("x", 1, true, [], null) is a 400 everywhere, never a crash', async () => {
+    const send = (c, url, body) => c.request('POST', url, { body, headers: { 'content-type': 'application/json' } });
+    for (const [c, url] of [
+      [bar, '/api/bar/dlva-a/settings'], [bar, '/api/bar/dlva-a/orders'], [bar, '/api/bar/dlva-a/counter'],
+      [owners.dlva, '/api/brand/dlva/branches/dlva-a/settings'], [owners.dlva, '/api/brand/dlva/account'],
+      [owners.dlva, '/api/brand/dlva/texts'], [owners.dlva, drivers('dlva', 'dlva-a')],
+    ]) {
+      for (const body of ['"x"', '1', 'true', '[]', 'null']) assert.equal((await send(c, url, body)).status, 400, `${url} ${body}`);
+    }
+    // A branch id with a stray character in a logout link: no crash (it was a 500).
+    for (const id of ['%00', '%0d%0a', 'a%3Bb']) assert.equal((await client(server.url).post(`/api/bar/${id}/logout`, {})).status, 200, id);
+  });
+
   test('pickup is as before: ready then picked, nothing of delivery on it', async () => {
     const k = new URL((await bar.get('/api/bar/dlva-a/state')).data.qr.staticUrl).searchParams.get('k');
     const o = (await client(server.url).post('/api/b/dlva-a/claim', { k })).data;

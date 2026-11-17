@@ -196,8 +196,8 @@ export class BranchStore {
   /**
    * An order rung up at the counter (order QR mode): no code to check, the customer joins it
    * by scanning its own QR. `number`/`ref` come from the POS; without them, the next number.
+   * `type` 'delivery': rung up by the cashier with the customer's mobile (2010xxxxxxxx).
    */
-  /** `type` 'delivery': rung up by the cashier with the customer's mobile (2010xxxxxxxx). */
   createOrder({ number = null, ref = null, type = 'pickup', customerPhone = null } = {}) {
     return tx(this.db, () => {
       const shop = this.getShop();
