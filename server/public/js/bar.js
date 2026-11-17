@@ -467,9 +467,18 @@ async function act(id, path, body) {
   }
 }
 
+// A quick double tap would make an order ready and hand it over at once (the customer never
+// rings): a second tap on the same tile right after the first is taken as the same tap.
+const DOUBLE_TAP_MS = 1200;
+const lastTap = new Map(); // order id -> when its tile was last tapped
+
 async function advance(id) {
   const o = orders.get(id);
   if (!o) return;
+  const now = Date.now();
+  if (now - (lastTap.get(id) ?? 0) < DOUBLE_TAP_MS) return;
+  lastTap.set(id, now);
+  if (lastTap.size > 200) lastTap.delete(lastTap.keys().next().value);
   // Delivery: the first tap sends it out with a driver, the next one says it arrived.
   if (isDelivery(o)) {
     if (o.status === 'preparing') {
