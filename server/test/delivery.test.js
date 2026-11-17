@@ -8,7 +8,7 @@ import { hashPin } from '../src/auth.js';
 import { egyptMobile, localMobile } from '../src/contact.js';
 import { BRANCH_MIGRATIONS, openBranchDb } from '../src/db.js';
 import { runMigrations } from '../src/migrations.js';
-import { client, startServer } from './helpers.js';
+import { client, sse, startServer } from './helpers.js';
 
 const SUPER_PASSWORD = 'super-secret-pass';
 
@@ -81,7 +81,7 @@ describe('delivery over HTTP', () => {
   let barB;
 
   before(async () => {
-    server = await startServer({ SUPER_PASSWORD_HASH: await hashPin(SUPER_PASSWORD) });
+    server = await startServer({ SUPER_PASSWORD_HASH: await hashPin(SUPER_PASSWORD), JOB_INTERVAL_SECONDS: '1' });
     const su = client(server.url);
     await su.post('/api/super/login', { password: SUPER_PASSWORD });
     for (const [brand, branches] of [['dlva', ['dlva-a', 'dlva-b']], ['dlvb', ['dlvb-a']]]) {
@@ -137,5 +137,95 @@ describe('delivery over HTTP', () => {
     assert.equal((await owners.dlvb.get(drivers('dlvb', 'dlva-a'))).status, 404, 'a branch of another brand under my brand');
     assert.equal((await owners.dlvb.post(drivers('dlvb', 'dlva-a'), { name: 'x', phone: '01012345678' })).status, 404);
     assert.equal((await bar.get(drivers('dlva', 'dlva-a'))).status, 401, 'cashiers don\u2019t manage drivers');
+  });
+
+  const orders = (shop) => `/api/bar/${shop}/orders`;
+  const customerView = async (id) => (await client(server.url).get(`/api/b/dlva-a/orders/${id}`)).data;
+  const branchDb = () => new DatabaseSync(path.join(server.dataDir, 'tenants', 'dlva', 'dlva-a', 'pager.db'));
+  const newDelivery = async (phone = '01012345678') => (await bar.post(orders('dlva-a'), { type: 'delivery', phone })).data;
+
+  test('cashier: a delivery order needs delivery on and an Egyptian mobile; only the cashier sees the mobile', async () => {
+    assert.equal((await barB.post(orders('dlva-b'), { type: 'delivery', phone: '01012345678' })).status, 409, 'delivery off');
+    assert.equal((await bar.post(orders('dlva-a'), { type: 'delivery', phone: '0123' })).data.field, 'phone');
+    assert.equal((await bar.post(orders('dlva-a'), {})).status, 409, 'pickup by the cashier still needs order QR mode');
+
+    const res = await bar.post(orders('dlva-a'), { type: 'delivery', phone: '+20 10 1234 5678' });
+    assert.equal(res.status, 200);
+    const o = res.data;
+    assert.deepEqual([o.type, o.status, o.customer, o.driver], ['delivery', 'preparing', { phone: '01012345678', wa: '201012345678' }, null]);
+    assert.equal(o.link, `${server.url}/s/dlva-a?o=${o.id}&j=1`);
+    const state = (await bar.get('/api/bar/dlva-a/state')).data;
+    assert.deepEqual(state.drivers.map((d) => d.name), ['أحمد']);
+    assert.ok(state.orders.find((x) => x.id === o.id).customer, 'the cashier screen has it');
+
+    const seen = await customerView(o.id);
+    assert.equal(seen.type, 'delivery');
+    assert.ok(!JSON.stringify(seen).includes('1012345678'), 'the customer page never gets the mobile');
+    assert.equal(seen.link, undefined);
+
+    assert.equal((await bar.post(`${orders('dlva-a')}/${o.id}/advance`, {})).status, 409, 'leaves with a driver, not by a tap');
+    assert.equal((await bar.post(`${orders('dlva-a')}/${o.id}/status`, { status: 'ready' })).status, 409, 'never ready');
+  });
+
+  test('«خرج للتوصيل»: a driver of this branch; the customer sees them on the way; delivered hides them', async () => {
+    const o = await newDelivery();
+    const url = `${orders('dlva-a')}/${o.id}/dispatch`;
+    const driverA = (await bar.get('/api/bar/dlva-a/state')).data.drivers[0];
+    const driverB = (await owners.dlva.post(drivers('dlva', 'dlva-b'), { name: 'Other', phone: '01212345678' })).data.driver;
+    assert.equal((await bar.post(url, { driverId: 9999 })).data.field, 'driverId');
+    assert.equal((await bar.post(url, { driverId: driverB.id + 100 })).data.field, 'driverId');
+    assert.equal((await barB.post(`/api/bar/dlva-b/orders/${o.id}/dispatch`, { driverId: driverB.id })).status, 404, 'another branch’s cashier');
+
+    const stream = await sse(`${server.url}/api/b/dlva-a/orders/${o.id}/events`);
+    await stream.next('order');
+    const sent = await bar.post(url, { driverId: driverA.id, from: 'preparing' });
+    assert.equal(sent.status, 200);
+    assert.equal(sent.data.status, 'out_for_delivery');
+    const pushed = (await stream.next('order')).data;
+    assert.deepEqual(pushed.driver, { name: 'أحمد', phone: '01012345678', tel: '+201012345678' });
+    assert.equal(pushed.message, 'طلبك في الطريق مع أحمد');
+    stream.close();
+    assert.equal((await bar.post(url, { driverId: driverA.id })).status, 409, 'once');
+
+    // The driver deleted (or edited) meanwhile: this order keeps who took it.
+    await owners.dlva.post(`${drivers('dlva', 'dlva-a')}/${driverA.id}/delete`, {});
+    assert.equal((await customerView(o.id)).driver.name, 'أحمد');
+
+    const done = await bar.post(`${orders('dlva-a')}/${o.id}/advance`, { from: 'out_for_delivery' });
+    assert.equal(done.data.status, 'picked');
+    const closed = await customerView(o.id);
+    assert.deepEqual([closed.driver, closed.message], [null, 'طلبك وصل، بالهنا والشفا']);
+    const db = branchDb();
+    const row = db.prepare('SELECT customer_phone, driver_phone, driver_name FROM orders WHERE id = ?').get(o.id);
+    db.close();
+    assert.deepEqual({ ...row }, { customer_phone: null, driver_phone: null, driver_name: 'أحمد' }, 'phone numbers gone once closed');
+  });
+
+  test('on its way longer than the branch’s minutes, it closes by itself; cancelled hides the driver', async () => {
+    const driver = (await owners.dlva.post(drivers('dlva', 'dlva-a'), { name: 'Sayed', phone: '01098765432' })).data.driver;
+    const late = await newDelivery();
+    const onTime = await newDelivery('01112345678');
+    for (const o of [late, onTime]) await bar.post(`${orders('dlva-a')}/${o.id}/dispatch`, { driverId: driver.id });
+    const db = branchDb();
+    db.prepare('UPDATE orders SET out_at = ? WHERE id = ?').run(Date.now() - 46 * 60_000, late.id); // the branch closes after 45
+    db.close();
+    for (let i = 0; i < 40 && (await customerView(late.id)).status !== 'picked'; i++) await new Promise((r) => setTimeout(r, 100));
+    assert.equal((await customerView(late.id)).status, 'picked');
+    assert.equal((await customerView(onTime.id)).status, 'out_for_delivery');
+
+    await bar.post(`${orders('dlva-a')}/${onTime.id}/status`, { status: 'cancelled' });
+    const gone = await customerView(onTime.id);
+    assert.deepEqual([gone.status, gone.driver], ['cancelled', null]);
+  });
+
+  test('pickup is as before: ready then picked, nothing of delivery on it', async () => {
+    const k = new URL((await bar.get('/api/bar/dlva-a/state')).data.qr.staticUrl).searchParams.get('k');
+    const o = (await client(server.url).post('/api/b/dlva-a/claim', { k })).data;
+    assert.deepEqual([o.type, o.driver, o.customer], ['pickup', null, undefined]);
+    assert.equal((await bar.post(`${orders('dlva-a')}/${o.id}/advance`, {})).data.status, 'ready');
+    assert.equal((await bar.post(`${orders('dlva-a')}/${o.id}/dispatch`, { driverId: 1 })).status, 400, 'no such driver any more');
+    const driver = (await bar.get('/api/bar/dlva-a/state')).data.drivers[0];
+    assert.equal((await bar.post(`${orders('dlva-a')}/${o.id}/dispatch`, { driverId: driver.id })).status, 409, 'a pickup order never leaves with a driver');
+    assert.equal((await bar.post(`${orders('dlva-a')}/${o.id}/advance`, {})).data.status, 'picked');
   });
 });

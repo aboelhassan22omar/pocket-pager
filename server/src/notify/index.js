@@ -30,7 +30,7 @@ export function createNotifier({ tenants, config, log }) {
     try {
       const res = await sendNotification(sub.payload, payload, {
         TTL: 6 * 3600,
-        urgency: order.status === 'ready' ? 'high' : 'normal',
+        urgency: order.status === 'ready' || order.status === 'out_for_delivery' ? 'high' : 'normal',
         topic: order.id.slice(0, 32),
       });
       log.debug({ orderId: order.id, status: order.status, push: res.statusCode }, 'web push sent');
@@ -60,6 +60,9 @@ export function createNotifier({ tenants, config, log }) {
     if (closed) aps['dismissal-date'] = now + DISMISS_AFTER_S;
     if (order.status === 'ready') {
       aps.alert = { title: `طلبك رقم ${order.number} جاهز`, body: shop.ready_message, sound: 'default' };
+    }
+    if (order.status === 'out_for_delivery') {
+      aps.alert = { title: `طلبك رقم ${order.number} في الطريق`, body: statusMessage(order, shop), sound: 'default' };
     }
     return { aps };
   }

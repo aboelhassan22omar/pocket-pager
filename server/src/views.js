@@ -1,6 +1,7 @@
 // Shapes the API exposes. Never leak pin_hash, nonces or keys outside bar-only views.
 
 import { brandTheme, readableAccent } from '../public/js/color.js';
+import { localMobile } from './contact.js';
 import { loyaltyEnabled } from './loyalty.js';
 import { featureFlags } from './plans.js';
 
@@ -24,6 +25,8 @@ export const DONE_MESSAGES = {
 export function statusMessage(order, shop) {
   if (order.status === 'preparing') return shop.preparing_message;
   if (order.status === 'ready') return shop.ready_message;
+  if (order.status === 'out_for_delivery') return order.driver_name ? `طلبك في الطريق مع ${order.driver_name}` : 'طلبك في الطريق';
+  if (order.status === 'picked' && order.order_type === 'delivery') return 'طلبك وصل، بالهنا والشفا';
   return DONE_MESSAGES[order.status] ?? '';
 }
 
@@ -87,6 +90,23 @@ export const publicOrder = (order, shop) => ({
   reward: orderReward(order, shop),
   // The customer has a stamp card on this order (it gets a stamp at handover).
   card: loyaltyEnabled(shop) && Boolean(order.device_hash),
+  // Delivery: the driver (name, and a phone to call) only while the order is on its way.
+  type: order.order_type ?? 'pickup',
+  outAt: order.out_at ?? null,
+  driver: order.status === 'out_for_delivery' && order.driver_name
+    ? { name: order.driver_name, phone: localMobile(order.driver_phone), tel: order.driver_phone ? `+${order.driver_phone}` : null }
+    : null,
+});
+
+/**
+ * The cashier's view of an order: a delivery order also carries the customer's mobile and the
+ * order's link, for «ابعت على واتساب». Never sent to customer pages.
+ */
+export const barOrder = (order, shop, config) => ({
+  ...publicOrder(order, shop),
+  ...(order.order_type === 'delivery' && order.customer_phone
+    ? { customer: { phone: localMobile(order.customer_phone), wa: order.customer_phone }, link: orderUrl(config, shop.id, order.id) }
+    : {}),
 });
 
 export const barShop = (shop) => ({

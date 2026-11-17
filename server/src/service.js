@@ -5,9 +5,9 @@ import { etaStats, queueFor } from './queue.js';
 import { rollupBranch } from './rollups.js';
 import { OPEN_STATUSES } from './store.js';
 import { branchTz } from './util.js';
-import { barShop, publicOrder, qrInfo } from './views.js';
+import { barOrder, barShop, publicOrder, qrInfo } from './views.js';
 
-const NEXT_STATUS = { preparing: 'ready', ready: 'picked' };
+const NEXT_STATUS = { preparing: 'ready', ready: 'picked', out_for_delivery: 'picked' };
 
 // Order lifecycle + fan-out to SSE (bus) and push (notifier). Every function takes the
 // branch context it was resolved for; events only ever go to that branch's channels.
@@ -81,7 +81,7 @@ export function createService({ control, tenants, bus, notifier, screens, config
     const ch = channels(ctx.branch.id);
     bus.emit(ch.order(order.id), 'order', view);
     if (renotify) bus.emit(ch.order(order.id), 'renotify', view);
-    bus.emit(ch.bar, 'order', { action, order: publicOrder(order, shop), counter: ctx.store.counter() });
+    bus.emit(ch.bar, 'order', { action, order: barOrder(order, shop, config), counter: ctx.store.counter() });
     notifier.orderChanged(ctx, order, shop, { renotify });
     publishQueue(ctx);
   }
@@ -124,6 +124,33 @@ export function createService({ control, tenants, bus, notifier, screens, config
     const { order, shop } = ctx.store.createOrder({ number, ref });
     orderRungUp(ctx, order, shop);
     return { order, shop };
+  }
+
+  /**
+   * A delivery order, rung up by the cashier with the customer's mobile. Its link goes to the
+   * customer on WhatsApp; nothing shows on the customer screen (they aren't in the shop).
+   */
+  function createDelivery(ctx, customerPhone) {
+    const { order, shop } = ctx.store.createOrder({ type: 'delivery', customerPhone });
+    publishOrder(ctx, order, shop, { action: 'created' });
+    control.touch(ctx.branch.id);
+    return { order, shop };
+  }
+
+  /**
+   * A delivery order leaves with a driver. The stamp card's stamp comes now (the cashier knows
+   * what's in the order; it may close by itself later, with nobody to ask).
+   */
+  function dispatch(ctx, shop, order, driver, { product = false } = {}) {
+    if (order.order_type !== 'delivery') throw new HttpError(409, 'ده مش طلب توصيل');
+    if (order.status !== 'preparing') throw new HttpError(409, 'الطلب ده خرج أو اتقفل خلاص');
+    const updated = ctx.store.dispatch(order, driver);
+    publishOrder(ctx, updated, shop);
+    if (loyaltyEnabled(shop) && updated.device_hash && (!shop.loyalty_product || product)) {
+      ctx.store.stamp(updated, shop.loyalty_every);
+      bus.emit(channels(ctx.branch.id).order(order.id), 'loyalty', loyaltyView(shop, ctx.store.loyaltyCard(updated.device_hash)));
+    }
+    return ctx.store.getOrder(order.id);
   }
 
   function orderRungUp(ctx, order, shop) {
@@ -184,6 +211,8 @@ export function createService({ control, tenants, bus, notifier, screens, config
   function setStatus(ctx, shop, order, status, { product = false } = {}) {
     if (!OPEN_STATUSES.includes(order.status)) throw new HttpError(409, 'الطلب ده اتقفل خلاص');
     if (order.status === status) return order;
+    // A delivery order is never "ready at the counter": it leaves with a driver instead.
+    if (order.order_type === 'delivery' && status === 'ready') throw new HttpError(409, 'طلب التوصيل بيخرج مع مندوب، مش بيبقى جاهز عند الكاشير');
     const updated = ctx.store.setStatus(order, status);
     publishOrder(ctx, updated, shop);
     if (status === 'ready') scheduleRepeats(ctx.branch.id, order.id);
@@ -209,6 +238,7 @@ export function createService({ control, tenants, bus, notifier, screens, config
   function advance(ctx, shop, order, opts) {
     const next = NEXT_STATUS[order.status];
     if (!next) throw new HttpError(409, 'الطلب ده اتقفل خلاص');
+    if (order.order_type === 'delivery' && order.status === 'preparing') throw new HttpError(409, 'اختار المندوب الأول («خرج للتوصيل»)');
     return setStatus(ctx, shop, order, next, opts);
   }
 
@@ -239,6 +269,8 @@ export function createService({ control, tenants, bus, notifier, screens, config
         const shop = ctx?.store.getShop();
         if (!shop) continue;
         for (const order of ctx.store.dueForExpiry()) publishOrder(ctx, ctx.store.setStatus(order, 'expired'), shop);
+        // Delivery: on its way long enough, it arrived (the cashier needn't mark it).
+        for (const order of ctx.store.dueDelivered()) setStatus(ctx, shop, order, 'picked');
         const purged = ctx.store.purgeClosed();
         if (purged.orders || purged.subscriptions) log.info({ branch: id, ...purged }, 'purged old orders / subscriptions');
       } catch (err) {
@@ -266,7 +298,7 @@ export function createService({ control, tenants, bus, notifier, screens, config
   }
 
   return {
-    claim, createOrder, manualReceipt, cancelManualReceipt, adjustCounter, posOrders, posUnread, setStatus, advance, renotify, redeem, publishNonce, publishShop, rotateDue, runJobs, runRollups, customerView,
+    claim, createOrder, createDelivery, dispatch, manualReceipt, cancelManualReceipt, adjustCounter, posOrders, posUnread, setStatus, advance, renotify, redeem, publishNonce, publishShop, rotateDue, runJobs, runRollups, customerView,
     close: () => {
       for (const id of [...repeats.keys()]) clearRepeats(id);
     },
