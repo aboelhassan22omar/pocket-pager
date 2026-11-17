@@ -325,6 +325,18 @@ describe('service worker', () => {
     assert.deepEqual(sw.closed, ['order-abc123']);
   });
 
+  test('delivery, on its way: posted anew with one sound and a short buzz', async () => {
+    const sw = loadWorker();
+    await sw.push({ ...order, status: 'preparing' });
+    await sw.push({ ...order, status: 'out_for_delivery', message: 'طلبك في الطريق مع أحمد' });
+    const { title, options } = sw.shown[1];
+    assert.equal(title, 'طلبك رقم 7 في الطريق');
+    assert.equal(options.body, 'طلبك في الطريق مع أحمد');
+    assert.deepEqual([options.renotify, options.silent], [true, false]);
+    assert.deepEqual([...options.vibrate], [300, 150, 300]);
+    assert.deepEqual(sw.closed, ['order-abc123']);
+  });
+
   test('picked / expired: the notification is closed', async () => {
     for (const status of ['picked', 'expired', 'cancelled']) {
       const sw = loadWorker();

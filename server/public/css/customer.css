@@ -240,9 +240,38 @@
   width: 100%;
 }
 
+.card[data-status='out_for_delivery'] .progress span {
+  width: 80%;
+  animation: breathe 2.4s ease-in-out infinite;
+}
+
 .card[data-status='ready'] .card-icon,
+.card[data-status='out_for_delivery'] .card-icon,
 .card[data-status='picked'] .card-icon {
   color: var(--ready);
+}
+
+.card[data-status='out_for_delivery'] .card-status {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+}
+
+/* Delivery: the driver and a call button, while the order is on its way. */
+.card-driver {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0 0;
+}
+
+.call-driver {
+  gap: 8px;
+  min-height: 52px;
+  font-weight: 600;
+}
+
+.call-driver .icon {
+  width: 20px;
+  height: 20px;
 }
 
 .card[data-status='picked'] .card-number,
