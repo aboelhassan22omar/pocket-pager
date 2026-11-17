@@ -42,9 +42,9 @@
         <button class="btn btn-primary count-btn" id="count-plus" type="button" aria-label="عدّي رقم: ديليفري أو طلب من غير سكان">+</button>
         <button class="btn btn-primary new-order" id="new-order" type="button" hidden>طلب جديد</button>
         <div class="counter-text" aria-live="polite">
-          <p class="counter-next"><span>الرقم الجاي</span> <strong class="num" id="count-next"></strong></p>
-          <p class="counter-last"><span>آخر رقم</span> <span class="num" id="count-last"></span></p>
-          <p class="counter-last" id="count-waiting" hidden></p>
+          <p class="counter-next"><span class="counter-label">الرقم الجاي</span><strong class="num" id="count-next"></strong></p>
+          <p class="counter-last"><span class="counter-label">آخر رقم</span><span class="num" id="count-last"></span></p>
+          <p class="counter-waiting" id="count-waiting" hidden></p>
         </div>
         <button class="btn count-btn" id="count-minus" type="button" aria-label="ارجع رقم لورا">−</button>
       </section>
@@ -52,14 +52,27 @@
       <p class="board-meta" id="board-meta"></p>
       <div id="grid" class="grid" role="list"></div>
       <div id="empty" class="empty" hidden>
+        <span class="empty-icon" id="empty-icon" aria-hidden="true"></span>
         <p class="empty-title">مفيش طلبات مفتوحة</p>
         <p class="muted">أول ما عميل يمسح الكود، رقمه هيظهر هنا.</p>
+        <a class="btn empty-qr" id="empty-qr" href="#">افتح شاشة الكود</a>
       </div>
-      <label class="late-chime"><input type="checkbox" id="late-chime"> صوت لما طلب يتأخر (على الشاشة دي بس)</label>
-      <p class="help muted">دوسة واحدة: الطلب جاهز وبيرن عند العميل. دوسة تانية: اتسلّم. دوسة طويلة: اختيارات أكتر.</p>
-      <p class="help muted" id="delivery-help" hidden>توصيل: دوسة على طلب التوصيل تختار المندوب وتخرّجه، ودوسة تانية لما يوصل (وبيتقفل لوحده بعد شوية لو نسيت).</p>
-      <p class="help muted" id="manual-help" hidden>تيكاواي: اكتب رقم الفاتورة ودوس «ضيف»، وأول عميل يعمل سكان بعدها بياخد رقمها على طول، وبيشوف رقم الفاتورة تحته. لو فاتورة اتلغت أو اتكتبت غلط: اكتب رقمها ودوس «الغي الفاتورة».</p>
-      <p class="help muted" id="count-help">طلعت طلب ديليفري أو طلب مش هيعمل سكان؟ دوس + عشان العد يفضل زي السيستم. دوس − لو عدّيت رقم بالغلط.</p>
+
+      <section class="guide" aria-labelledby="guide-title">
+        <h2 class="guide-title" id="guide-title">إزاي تشتغل على الشاشة</h2>
+        <dl class="gestures">
+          <div><dt>دوسة</dt><dd>الطلب جاهز، وبيرن عند العميل</dd></div>
+          <div><dt>دوسة تانية</dt><dd>العميل استلم</dd></div>
+          <div><dt>دوسة طويلة</dt><dd>اختيارات أكتر: رنّة تاني، رجوع، إلغاء</dd></div>
+          <div id="count-help"><dt><span class="num">+</span> و <span class="num">−</span></dt><dd>طلعت طلب ديليفري أو طلب مش هيعمل سكان؟ دوس + عشان العد يفضل زي السيستم، و − لو عدّيت رقم بالغلط.</dd></div>
+          <div id="delivery-help" hidden><dt>توصيل</dt><dd>دوسة على الطلب تختار المندوب وتخرّجه، ودوسة تانية لما يوصل. بيتقفل لوحده بعد شوية لو نسيت.</dd></div>
+          <div id="manual-help" hidden><dt>تيكاواي</dt><dd>اكتب رقم الفاتورة ودوس «ضيف»، وأول عميل يعمل سكان بعدها بياخد رقمها. لو فاتورة اتلغت أو اتكتبت غلط، اكتب رقمها ودوس «الغي الفاتورة».</dd></div>
+        </dl>
+        <label class="switch-row">
+          <span><strong>صوت لما طلب يتأخر</strong><span class="muted">على الشاشة دي بس</span></span>
+          <input type="checkbox" role="switch" class="switch" id="late-chime">
+        </label>
+      </section>
     </main>
   </div>
 

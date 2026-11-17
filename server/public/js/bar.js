@@ -150,6 +150,7 @@ function renderCounter(counter) {
   lastCounter = counter;
   $('count-next').textContent = String(counter.next ?? '—');
   $('count-last').textContent = counter.last == null ? 'لسه مفيش' : String(counter.last);
+  $('count-last').classList.toggle('is-none', counter.last == null);
   $('count-minus').disabled = counter.last == null;
   $('count-waiting').hidden = !counter.waiting;
   $('count-waiting').textContent = counter.waiting
@@ -727,10 +728,13 @@ async function boot() {
   }
   $('app').hidden = false;
   watchAppUpdates();
-  $('link-qr').href = `/qr/${encodeURIComponent(shopId)}`;
-  $('link-qr').innerHTML = icons.qr(22);
+  const qrHref = `/qr/${encodeURIComponent(shopId)}`;
+  $('link-qr').href = qrHref;
+  $('link-qr').innerHTML = `${icons.qr(20)}<span>شاشة الكود</span>`;
   $('link-settings').href = `/settings/${encodeURIComponent(shopId)}`;
-  $('link-settings').innerHTML = icons.settings(22);
+  $('link-settings').innerHTML = `${icons.settings(20)}<span>الإعدادات</span>`;
+  $('empty-qr').href = qrHref;
+  $('empty-icon').innerHTML = icons.bell(28);
   keepSoundOn();
   applyState(state);
   bindGrid();

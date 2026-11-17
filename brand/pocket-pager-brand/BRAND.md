@@ -47,7 +47,8 @@ Egyptian Arabic. Short, warm and direct. Example: «جرّبه 3 أيام ببل
   - marketing and landing pages, `/demo` and `/super`;
   - the iOS app and App Clip icon, plus the Live Activity accents;
   - the favicon and PWA icons;
-  - the "Powered by" mark and the default theme when a branch has no logo.
+  - the default theme when a branch has no logo.
+- **Aurexis:** a café's pages close with "Powered by" + the Aurexis mark + AUREXIS (`server/public/img/brand/aurexis-mark.svg`, self-hosted).
 - **Café identity wins:**
   - a branch's customer, cashier and QR pages keep its own logo colour (the existing brand-colour system);
   - the branded cashier and owner apps stay private label, using the brand's own name and logo.
