@@ -90,10 +90,21 @@
 
   <section id="ready" class="ready" hidden aria-live="assertive">
     <div class="ready-mark" id="ready-mark"></div>
-    <h2 class="ready-title" data-t="ready_title">طلبك جاهز</h2>
+    <h2 class="ready-title" id="ready-title">طلبك جاهز</h2>
     <p class="ready-number num" id="ready-number"></p>
     <p class="ready-message" id="ready-message"></p>
     <p class="ready-hint" id="ready-hint" data-t="ready_hint">المس الشاشة عشان توقّف التنبيه</p>
+  </section>
+
+  <!-- A phone that opened the order with no tap yet (a shared link, the order's QR): browsers
+       play no sound before a tap, so one tap here turns the ring on. -->
+  <section id="sound-gate" class="sound-gate" hidden role="dialog" aria-modal="true" aria-labelledby="sound-title">
+    <div class="sound-sheet">
+      <span class="sound-icon" id="sound-icon" aria-hidden="true"></span>
+      <h2 class="sound-title" id="sound-title">خلّي موبايلك يرن لما طلبك يجهز</h2>
+      <p class="sound-text" data-t="sound_text">دوسة واحدة بس، والموبايل هيرن حتى لو قفلت الشاشة.</p>
+      <button id="sound-on" class="btn btn-primary btn-block sound-on" type="button" data-t="sound_button">شغّل الرنّة</button>
+    </div>
   </section>
 </body>
 </html>
