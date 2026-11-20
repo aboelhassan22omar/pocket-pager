@@ -296,6 +296,26 @@
   font-size: var(--fs-lg);
 }
 
+/* Not on yet: a soft ring around it, so nobody misses that it needs a tap. */
+.enable:not(.is-on):not(:disabled) {
+  animation: call 2s ease-out 1s infinite;
+}
+
+/* The page's entrance comes first, the call after it. */
+.stage.is-entering .enable:not(.is-on):not(:disabled) {
+  animation: rise 520ms var(--ease) 90ms both, call 2s ease-out 1.2s infinite;
+}
+
+@keyframes call {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent);
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 14px color-mix(in srgb, var(--accent) 0%, transparent);
+  }
+}
+
 .enable.is-on {
   border: 1px solid var(--line-strong);
   background: transparent;
@@ -605,6 +625,90 @@
   border: 1px solid rgb(255 255 255 / 0.35);
   border-radius: 999px;
   font-size: var(--fs-sm);
+}
+
+/* A delivery that just left: the same full screen in the accent (green means "ready" only). */
+.ready[data-kind='out'] {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.ready[data-kind='out'].is-ringing {
+  animation: flood 360ms var(--ease) both, pulse-out 1.3s ease-in-out 360ms infinite;
+}
+
+.ready[data-kind='out'] .ready-hint {
+  border-color: color-mix(in srgb, currentColor 35%, transparent);
+}
+
+@keyframes pulse-out {
+  50% {
+    background-color: color-mix(in srgb, var(--accent) 82%, #fff);
+  }
+}
+
+/* ---------- turn the ring on (no tap yet on this page) ---------- */
+
+.sound-gate {
+  position: fixed;
+  inset: 0;
+  /* Under the Powered by bar, like every layer here; the sheet ends above it. */
+  z-index: 900;
+  display: grid;
+  align-items: end;
+  padding-bottom: calc(var(--footer-h) + env(safe-area-inset-bottom));
+  background: rgb(0 0 0 / 0.55);
+  cursor: pointer;
+  animation: flood 200ms var(--ease) both;
+}
+
+.sound-sheet {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  width: min(100%, 480px);
+  margin-inline: auto;
+  padding: 28px var(--gutter) 20px;
+  border-radius: var(--r-card) var(--r-card) 0 0;
+  background: var(--surface);
+  text-align: center;
+  animation: sheet-up 280ms var(--ease) both;
+}
+
+.sound-icon {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 6px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+}
+
+.sound-title {
+  margin: 0;
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.sound-text {
+  max-width: 32ch;
+  margin: 0 0 14px;
+  color: var(--muted);
+}
+
+.sound-on {
+  min-height: 56px;
+  font-size: var(--fs-lg);
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(32px);
+    opacity: 0;
+  }
 }
 
 /* ---------- loyalty stamp card ---------- */

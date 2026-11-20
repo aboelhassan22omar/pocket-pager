@@ -10,7 +10,8 @@ import { CLOSED_STATUSES } from './store.js';
 // audio with its screen locked or another app open, where it stops the page itself: so the
 // ring comes inside the stream, not from the page. Silent while the order is prepared (digital
 // silence, nothing to hear), then the brand's ring, again and again, until that phone's owner
-// taps their screen (ack), the order is picked up, or RING_MAX_MS.
+// taps their screen (ack), the order is picked up, or RING_MAX_MS. A delivery order rings the
+// same way when it leaves the branch (out_for_delivery), for at most OUT_RING_MAX_MS.
 //
 // MPEG-2 Layer III, 22050 Hz, mono. Silence frames are built by hand; ring frames come from
 // LAME, made once per ring and kept. Every frame stands alone where the two meet (a fresh
@@ -20,16 +21,26 @@ import { CLOSED_STATUSES } from './store.js';
 // stream in blocks of about 32 KB and play a block once it is whole. Measured in Chrome: 8 kbps
 // of silence is over 30 s late, 32 kbps about 7 s, 64 kbps about 3 s. 32 kbps (4 KB/s, about
 // 2.4 MB for 10 minutes of waiting) is the trade-off; the start is sent at 160 kbps so playback
-// begins at once. While the page is on screen it rings itself at once (customer.js).
+// begins at once. When the ring starts, BURST_BYTES of it go out at once (its silent gaps as
+// 160 kbps silence, so the burst adds little playing time): the block the browser is waiting
+// to fill fills now, and the ring is heard about as soon as it starts instead of seconds later.
+// While the page is on screen it rings itself at once (customer.js).
 
 export const RATE = 22050;
 const FRAME_SAMPLES = 576;
 export const FRAME_MS = (FRAME_SAMPLES / RATE) * 1000;
 const RING_KBPS = 48;
 const LEAD_FRAMES = Math.round(Number(process.env.ALARM_LEAD_MS ?? 1500) / FRAME_MS); // sent at once so the player starts
+// A stream opened ringing (the page heard "ready" and opens a fresh one, see lockscreen.js
+// ringNow): the burst starts the player, so the ring needn't wait behind 1.5 s of silence.
+const RING_LEAD_FRAMES = Math.round(Number(process.env.ALARM_RING_LEAD_MS ?? 200) / FRAME_MS);
 const TICK_MS = 200;
 export const RING_EVERY_MS = 2600;
 const RING_MAX_MS = 5 * 60 * 1000;
+const OUT_RING_MAX_MS = 60 * 1000;
+const BURST_BYTES = Number(process.env.ALARM_BURST_KB ?? 48) * 1024;
+// The statuses a phone rings for: ready (come and get it), out_for_delivery (it left the branch).
+const RINGS = new Set(['ready', 'out_for_delivery']);
 const CUSTOM_MAX_S = 6;
 const MAX_PER_ORDER = 12;
 const MAX_STREAMS = 3000;
@@ -185,10 +196,27 @@ export function createAlarms({ config, control, bus, log }) {
     return framesFor(`tone:${tone.id}`, () => tonePcm(tone));
   }
 
-  function startRing(s) {
+  function startRing(s, status = s.status) {
+    pump(s);
     s.ringing = true;
-    s.ringUntil = Date.now() + RING_MAX_MS;
+    s.ringUntil = Date.now() + (status === 'out_for_delivery' ? OUT_RING_MAX_MS : RING_MAX_MS);
     s.queue = [];
+    burst(s);
+  }
+
+  /** The ring's first seconds at once, BURST_BYTES of them: see the top of this file. */
+  function burst(s) {
+    if (s.res.writableNeedDrain || s.res.writableEnded) return;
+    const chunk = [];
+    let bytes = 0;
+    while (bytes < BURST_BYTES && s.ringing) {
+      const frame = nextFrame(s);
+      const out = frame === SILENCE ? LEAD_SILENCE : frame;
+      chunk.push(out);
+      bytes += out.length;
+      s.sent++;
+    }
+    if (chunk.length) s.res.write(Buffer.concat(chunk));
   }
 
   function stopRing(s) {
@@ -210,7 +238,7 @@ export function createAlarms({ config, control, bus, log }) {
   }
 
   function pump(s, now = Date.now()) {
-    const target = Math.floor((now - s.start) / FRAME_MS) + LEAD_FRAMES;
+    const target = Math.floor((now - s.start) / FRAME_MS) + s.lead;
     if (s.res.writableNeedDrain) {
       // A slow network: silence is skipped rather than piled up, so the ring stays on time.
       s.sent = target;
@@ -218,7 +246,7 @@ export function createAlarms({ config, control, bus, log }) {
     }
     const chunk = [];
     while (s.sent < target) {
-      chunk.push(s.sent < LEAD_FRAMES ? LEAD_SILENCE : nextFrame(s));
+      chunk.push(s.sent < s.lead ? LEAD_SILENCE : nextFrame(s));
       s.sent++;
     }
     if (chunk.length) s.res.write(Buffer.concat(chunk));
@@ -240,7 +268,7 @@ export function createAlarms({ config, control, bus, log }) {
       return streams.size;
     },
 
-    /** Starts a phone's stream on the hijacked reply. ring: the order is ready and not yet acked there. */
+    /** Starts a phone's stream on the hijacked reply. ring: the order rings (ready, or a delivery that left) and isn't acked there. */
     open({ req, reply, branchId, brandId, order, sid, ring }) {
       const mine = [...streams].filter((s) => s.orderId === order.id);
       if (mine.length >= MAX_PER_ORDER || streams.size >= MAX_STREAMS) return false;
@@ -258,6 +286,7 @@ export function createAlarms({ config, control, bus, log }) {
       const s = {
         sid, res, branchId, brandId, orderId: order.id, status: order.status,
         start: Date.now(), sent: 0, queue: [], ringing: false, ringUntil: 0,
+        lead: ring && RINGS.has(order.status) ? RING_LEAD_FRAMES : LEAD_FRAMES,
         channel: channels(branchId).order(order.id),
       };
       s.listener = (event, data) => {
@@ -269,16 +298,16 @@ export function createAlarms({ config, control, bus, log }) {
             close(s);
             return;
           }
-          if (data.status === 'ready' && s.status !== 'ready') startRing(s);
-          if (data.status !== 'ready') stopRing(s);
+          if (RINGS.has(data.status) && s.status !== data.status) startRing(s, data.status);
+          if (!RINGS.has(data.status)) stopRing(s);
           s.status = data.status;
         }
       };
       bus.on(s.channel, s.listener);
       req.raw.on('close', () => close(s));
       streams.add(s);
-      if (ring && order.status === 'ready') startRing(s);
       pump(s);
+      if (ring && RINGS.has(order.status)) startRing(s);
       return true;
     },
 

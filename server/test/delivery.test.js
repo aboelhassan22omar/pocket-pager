@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { after, before, describe, test } from 'node:test';
+import { splitFrames } from '../src/alarm.js';
 import { hashPin } from '../src/auth.js';
 import { egyptMobile, localMobile } from '../src/contact.js';
 import { BRANCH_MIGRATIONS, openBranchDb } from '../src/db.js';
@@ -280,5 +281,33 @@ describe('delivery over HTTP', () => {
     const driver = (await bar.get('/api/bar/dlva-a/state')).data.drivers[0];
     assert.equal((await bar.post(`${orders('dlva-a')}/${o.id}/dispatch`, { driverId: driver.id })).status, 409, 'a pickup order never leaves with a driver');
     assert.equal((await bar.post(`${orders('dlva-a')}/${o.id}/advance`, {})).data.status, 'picked');
+  });
+
+  test('«خرج للتوصيل» rings the customer’s alarm stream (silent while it is prepared)', async () => {
+    const o = await newDelivery();
+    const driver = (await owners.dlva.post(drivers('dlva', 'dlva-a'), { name: 'Ring', phone: '01112345678' })).data.driver;
+    const ctl = new AbortController();
+    const res = await fetch(`${server.url}/api/b/dlva-a/orders/${o.id}/alarm.mp3?s=phone-dlv1&ring=0`, { signal: ctl.signal });
+    assert.equal(res.status, 200);
+    const reader = res.body.getReader();
+    let buffer = Buffer.alloc(0);
+    let pending = null; // a read still waiting is kept, so no chunk is lost
+    const read = async (ms) => {
+      const end = Date.now() + ms;
+      while (Date.now() < end) {
+        pending ??= reader.read();
+        const next = await Promise.race([pending, new Promise((r) => setTimeout(() => r(null), end - Date.now()))]);
+        if (!next) break;
+        pending = null;
+        if (next.done) break;
+        buffer = Buffer.concat([buffer, Buffer.from(next.value)]);
+      }
+      return splitFrames(buffer);
+    };
+    const rings = (frames) => frames.filter((f) => f[2] >> 4 === 6).length; // 48 kbps: the ring
+    assert.equal(rings(await read(600)), 0, 'silent while prepared');
+    assert.equal((await bar.post(`${orders('dlva-a')}/${o.id}/dispatch`, { driverId: driver.id })).status, 200);
+    assert.ok(rings(await read(800)) > 0, 'rings once it leaves');
+    ctl.abort();
   });
 });

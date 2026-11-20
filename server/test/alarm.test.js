@@ -128,18 +128,24 @@ describe('alarm stream: every phone on the order rings, each stops on its own ta
     assert.ok(a.frames.length > 20, 'a lead of silence at once, then live');
     assert.ok(a.frames.every((f) => !isRing(f) && f.subarray(4).every((x) => x === 0)), 'only silence while preparing');
 
+    const before = a.frames.length;
     await status(order.id, 'ready');
     await Promise.all([a.until(isRing), b.until(isRing)]);
+    // The ring's start comes at once and big enough to fill the browser's read block (48 KB).
+    await new Promise((r) => setTimeout(r, 150));
+    const burst = a.frames.slice(before).reduce((n, f) => n + f.length, 0);
+    // (150 ms of the steady stream is under 3 KB: the rest can only be the burst.)
+    assert.ok(burst >= 48 * 1024, `burst of ${burst} bytes`);
 
     const ack = await client(server.url).post(`/api/b/alrm-a/orders/${order.id}/alarm/ack`, { s: 'phone-aaaa' });
     assert.equal(ack.data.ok, true);
     // After the tap: A goes silent; B still rings (its next ring comes).
     await new Promise((r) => setTimeout(r, 400));
     const mark = a.frames.length;
-    const bMark = b.frames.length;
+    const bRingsOn = b.until(isRing, 8000);
     await new Promise((r) => setTimeout(r, 3200));
     assert.ok(a.frames.slice(mark).every((f) => !isRing(f)), 'A stopped ringing');
-    assert.ok(b.frames.slice(bMark).some(isRing), 'B rings on');
+    await bRingsOn; // B rings on
 
     // The cashier rings again: A rings again too.
     await bar.post(`/api/bar/alrm-a/orders/${order.id}/renotify`);

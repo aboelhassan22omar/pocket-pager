@@ -37,6 +37,10 @@ let events = null;
 let pollTimer = null;
 let bannerTimer = null;
 let ringing = false;
+// A tap has happened on this page: the browser now lets it play sound (the chime and the stream).
+let soundPrimed = false;
+// The sound sheet waits a moment after load: the stream may start by itself (an earlier tap).
+let gateDue = false;
 let loyalty = null; // {every, stamps, rewardText, rewards} while the branch runs a stamp card
 
 const store = {
@@ -173,9 +177,11 @@ function render() {
   renderPromo();
   renderLoyalty();
 
-  if (order.status === 'ready') showReady();
+  if (order.status === 'ready') showReady('ready');
+  else if (order.status === 'out_for_delivery' && ringDue()) showReady('out');
   else hideReady();
   renderLockScreen();
+  renderSoundGate();
 }
 
 // Delivery: who is bringing it and a button to call them, only while it is on its way.
@@ -200,16 +206,42 @@ function renderLockScreen() {
   });
 }
 
-// Ready, and this phone hasn't tapped "got it" for this ring yet.
-const ringDue = () => order?.status === 'ready' && order.notifyCount > Number(store.get(`sp:ack:${order.id}`) ?? 0);
+// A delivery order rings once when it leaves the branch, until this phone taps.
+const outKey = (o) => `sp:out:${o.id}`;
+
+// Ready (or a delivery that just left), and this phone hasn't tapped "got it" for this ring yet.
+function ringDue() {
+  if (order?.status === 'out_for_delivery') return !store.get(outKey(order));
+  return order?.status === 'ready' && order.notifyCount > Number(store.get(`sp:ack:${order.id}`) ?? 0);
+}
 
 /** The alarm stream for this order: rings with the screen locked too. Needs a tap behind it. */
 function armAlarm() {
   if (!order || CLOSED.includes(order.status)) return;
-  // Delivery: the customer is at home; one notification when it leaves, no alarm stream.
-  if (order.type === 'delivery') return;
   alarm.start(`${branchApi}/orders/${encodeURIComponent(order.id)}`, ringDue);
   renderLockScreen();
+}
+
+/** Inside a tap: the page's chime and the alarm stream may play from now on. */
+function primeSound() {
+  soundPrimed = true;
+  chime.unlock();
+  armAlarm();
+  // Not at once: the tap's click comes after its touchend, and must still land on the sheet.
+  setTimeout(renderSoundGate, 400);
+  markEnabled();
+}
+
+/**
+ * Opened with no tap yet (a shared link, the order's QR, a delivery's WhatsApp link): the
+ * browser plays nothing, so the phone would stay silent. One tap on this sheet turns it on.
+ */
+function renderSoundGate() {
+  const show = gateDue && !soundPrimed && !alarm.live && order?.status === 'preparing';
+  $('sound-gate').hidden = !show;
+  if (!show) return;
+  $('sound-icon').innerHTML = icons.bell(30);
+  $('sound-title').textContent = t(order.type === 'delivery' ? 'sound_title_out' : 'sound_title');
 }
 
 const deviceHeaders = () => {
@@ -305,12 +337,15 @@ function renderNote() {
   });
 }
 
-function showReady() {
-  $('ready-mark').innerHTML = icons.check(72);
+// The full screen: «طلبك جاهز» (green), or «طلبك خرج» for a delivery that just left.
+function showReady(kind) {
+  $('ready').dataset.kind = kind;
+  $('ready-mark').innerHTML = kind === 'out' ? icons.scooter(72) : icons.check(72);
+  $('ready-title').textContent = t(kind === 'out' ? 'out_title' : 'ready_title');
   $('ready-number').textContent = label(order);
   $('ready-message').textContent = order.message;
   $('ready').hidden = false;
-  document.body.classList.add('is-ready');
+  document.body.classList.toggle('is-ready', kind === 'ready');
   if (ringDue()) startRinging();
   else $('ready-hint').hidden = true;
 }
@@ -333,6 +368,8 @@ function startRinging() {
   // locked or in another app, the stream rings.
   const onScreen = () => document.visibilityState === 'visible';
   alarm.setMuted(onScreen());
+  // Off screen (the page still runs, e.g. Android): a fresh stream rings in about a second.
+  if (!onScreen()) alarm.ringNow();
   $('ready').classList.add('is-ringing');
   $('ready-hint').hidden = false;
   const tick = () => {
@@ -359,26 +396,26 @@ function stopRinging(remember = true) {
   $('ready-hint').hidden = true;
   document.removeEventListener('pointerdown', acknowledge);
   document.removeEventListener('keydown', acknowledge);
-  if (remember && order) store.set(`sp:ack:${order.id}`, String(order.notifyCount));
+  if (remember && order) {
+    if (order.status === 'out_for_delivery') store.set(outKey(order), '1');
+    else store.set(`sp:ack:${order.id}`, String(order.notifyCount));
+  }
 }
 
 function acknowledge() {
   stopRinging(true);
   alarm.ack();
+  // A delivery on its way: back to the card (the driver and the call button).
+  if (order?.status === 'out_for_delivery') hideReady();
 }
 
 // ---------- live updates ----------
 
 function apply(next) {
   const wasOpen = order && !CLOSED.includes(order.status);
-  const leaving = order && order.status !== 'out_for_delivery' && next.status === 'out_for_delivery';
   order = next;
+  // A delivery leaving the branch rings like «جاهز» (render), until this phone taps.
   render();
-  // On its way: one chime and a short buzz (the push notification does it with the screen off).
-  if (leaving) {
-    chime.play('ready');
-    navigator.vibrate?.([300, 150, 300]);
-  }
   if (CLOSED.includes(order.status)) {
     // The stream closes here, so the pickup stamp is fetched rather than awaited as an event.
     if (wasOpen && order.status === 'picked') loadLoyalty();
@@ -524,10 +561,9 @@ function onEnable() {
   const permission = 'Notification' in window && Notification.permission === 'default'
     ? Notification.requestPermission()
     : Promise.resolve(window.Notification?.permission ?? 'denied');
-  chime.unlock();
+  primeSound();
   chime.play('soft');
   keepAwake();
-  armAlarm();
   button.disabled = true;
   button.textContent = t('enable_working');
 
@@ -542,7 +578,11 @@ function onEnable() {
     });
 }
 
-/** Notifications were allowed before (an earlier order): this order gets them with no tap. */
+/**
+ * Notifications were allowed before (an earlier order): this order gets them with no tap. The
+ * button still stays orange until this page has had a tap, because the page's own ring (and
+ * the stream that rings with the screen locked) can't play before one.
+ */
 async function autoSubscribe() {
   if (pushOn || pushSupport() !== 'granted' || !order || CLOSED.includes(order.status)) return;
   try {
@@ -550,11 +590,16 @@ async function autoSubscribe() {
   } catch {
     pushOn = false;
   }
-  if (pushOn) {
-    $('enable').classList.add('is-on');
-    $('enable').textContent = t('enable_on');
-  }
+  markEnabled();
   renderPushHint();
+}
+
+/** «التنبيه شغّال» (grey) only once both are true: notifications on, and a tap on this page. */
+function markEnabled() {
+  const button = $('enable');
+  if (!pushOn || !soundPrimed || button.disabled) return;
+  button.classList.add('is-on');
+  button.textContent = t('enable_on');
 }
 
 // ---------- «شارك الطلب» ----------
@@ -841,16 +886,27 @@ async function boot() {
   // The alarm stream starts at the first tap anywhere (a browser rule), or right away when
   // this page already had one (picking the number).
   armAlarm();
-  document.addEventListener('click', armAlarm, { once: true });
-  document.addEventListener('touchend', armAlarm, { once: true });
+  document.addEventListener('click', primeSound, { once: true });
+  document.addEventListener('touchend', primeSound, { once: true });
+  // The whole sheet is the button: any tap on it turns the ring on (and asks for notifications).
+  $('sound-gate').addEventListener('click', () => {
+    if (!$('enable').disabled) onEnable();
+    else primeSound();
+  });
+  // The stream may already play (the tap that picked the number): the sheet is only for the rest.
+  setTimeout(() => {
+    gateDue = true;
+    renderSoundGate();
+  }, 900);
   setInterval(() => {
     if (!order) return;
     $('card-when').textContent = elapsedLabel(order.createdAt);
     renderQueue();
   }, 30_000);
   document.addEventListener('visibilitychange', () => {
-    // Ringing: the page rings while on screen, the stream once it isn't.
+    // Ringing: the page rings while on screen, the stream once it isn't (a fresh one, on time).
     if (ringing) alarm.setMuted(document.visibilityState === 'visible');
+    if (ringing && document.visibilityState === 'hidden') alarm.ringNow();
     if (document.visibilityState === 'visible' && order && !CLOSED.includes(order.status)) {
       refresh();
       alarm.catchUp();

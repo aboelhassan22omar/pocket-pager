@@ -2,6 +2,11 @@
 // audio with the screen locked or another app open, where they stop the page itself, so the
 // ring comes inside the stream: silent while the order is prepared, the brand's ring when it is
 // ready. Started by a tap (the browser's rule); the lock screen shows the order as "now playing".
+//
+// A browser plays such a stream some seconds behind the server (it reads it in blocks), so a
+// ring that comes inside it is heard late. When the page itself hears "ready" (Android keeps a
+// page that plays audio running), ringNow() opens a fresh stream that starts with the ring:
+// heard in about a second instead of six or seven.
 
 // After a tap, the ring already on its way (the stream is some seconds behind) plays muted.
 const ACK_MUTE_MS = 12000;
@@ -29,8 +34,32 @@ export class AlarmStream {
     return Boolean(a && !a.paused && !a.error && a.readyState >= 2);
   }
 
-  #url() {
-    return `${this.base}/alarm.mp3?s=${this.sid}&ring=${this.wantRing() ? 1 : 0}`;
+  #url(sid = this.sid) {
+    return `${this.base}/alarm.mp3?s=${sid}&ring=${this.wantRing() ? 1 : 0}`;
+  }
+
+  /** An audio element for the stream, with its retry; the lock screen's pause keeps it going. */
+  #makeAudio() {
+    const a = new Audio();
+    a.preload = 'auto';
+    a.setAttribute('playsinline', '');
+    const retry = () => {
+      clearTimeout(this.retryTimer);
+      // Only the element in use retries (one swapped out by ringNow stays quiet).
+      if (a !== this.audio || !this.base || !a.getAttribute('src')) return;
+      this.retryTimer = setTimeout(() => this.#reload(), RETRY_MS);
+    };
+    a.addEventListener('error', retry);
+    a.addEventListener('ended', retry);
+    if ('mediaSession' in navigator) {
+      try {
+        navigator.mediaSession.setActionHandler('pause', () => this.audio?.play().catch(() => {}));
+        navigator.mediaSession.setActionHandler('stop', () => this.audio?.play().catch(() => {}));
+      } catch {
+        /* not supported here */
+      }
+    }
+    return a;
   }
 
   /**
@@ -40,28 +69,7 @@ export class AlarmStream {
   start(base, wantRing) {
     if (!this.supported) return;
     this.wantRing = wantRing;
-    if (!this.audio) {
-      const a = new Audio();
-      a.preload = 'auto';
-      a.setAttribute('playsinline', '');
-      const retry = () => {
-        clearTimeout(this.retryTimer);
-        if (!this.base || !a.getAttribute('src')) return;
-        this.retryTimer = setTimeout(() => this.#reload(), RETRY_MS);
-      };
-      a.addEventListener('error', retry);
-      a.addEventListener('ended', retry);
-      // The lock screen's pause button: the alarm keeps going.
-      if ('mediaSession' in navigator) {
-        try {
-          navigator.mediaSession.setActionHandler('pause', () => a.play().catch(() => {}));
-          navigator.mediaSession.setActionHandler('stop', () => a.play().catch(() => {}));
-        } catch {
-          /* not supported here */
-        }
-      }
-      this.audio = a;
-    }
+    if (!this.audio) this.audio = this.#makeAudio();
     if (this.live && base === this.base) return;
     this.base = base;
     // Always from now: a stream loaded while paused would play late by as long as it waited.
@@ -78,6 +86,33 @@ export class AlarmStream {
         a.removeAttribute('src');
         a.load();
       }
+    });
+  }
+
+  /**
+   * The ring is due now and the page is off screen: a fresh stream, opened ringing, in a second
+   * element. The old one stops only once the new one plays, so a browser that refuses keeps
+   * the old stream, whose ring still comes, later.
+   */
+  ringNow() {
+    if (!this.live || !this.base || !this.wantRing() || this.swapping) return;
+    this.swapping = true;
+    const sid = newSid();
+    const fresh = this.#makeAudio();
+    fresh.muted = this.audio.muted;
+    fresh.src = this.#url(sid);
+    fresh.play().then(() => {
+      const old = this.audio;
+      this.audio = fresh;
+      this.sid = sid;
+      old.pause();
+      old.removeAttribute('src');
+      old.load();
+    }).catch(() => {
+      fresh.removeAttribute('src');
+      fresh.load();
+    }).finally(() => {
+      this.swapping = false;
     });
   }
 

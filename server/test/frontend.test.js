@@ -505,6 +505,25 @@ describe('the alarm stream on the customer page', () => {
       ready = true;
       alarm.start('/api/b/cafe-a/orders/o2', () => ready);
       assert.match(made[0].src, /orders\/o2\/alarm\.mp3\?s=\w+&ring=1$/, 'an order already ready rings at once');
+
+      // Ready while off screen: a fresh stream, opened ringing, replaces the late one once it plays.
+      const oldSid = made[0].src.match(/s=(\w+)/)[1];
+      alarm.ringNow();
+      await new Promise((r) => setTimeout(r, 0));
+      assert.equal(made.length, 2);
+      assert.match(made[1].src, /orders\/o2\/alarm\.mp3\?s=\w+&ring=1$/);
+      assert.notEqual(made[1].src.match(/s=(\w+)/)[1], oldSid, 'its own stream id');
+      assert.equal(made[0].paused, true, 'the late stream stops');
+      assert.equal(made[0].src, undefined);
+      assert.equal(alarm.live, true);
+
+      // A browser that refuses to start it: the stream already playing stays.
+      FakeAudio.prototype.play = function play() { return Promise.reject(new Error('NotAllowedError')); };
+      alarm.ringNow();
+      await new Promise((r) => setTimeout(r, 0));
+      assert.equal(made.length, 3);
+      assert.equal(made[2].src, undefined, 'the refused one is dropped');
+      assert.equal(made[1].paused, false, 'the one playing goes on');
     } finally {
       globalThis.fetch = realFetch;
       delete globalThis.Audio;
@@ -515,14 +534,40 @@ describe('the alarm stream on the customer page', () => {
 
   test('the customer page: armed at a tap, the page rings on screen and the stream when locked, stopped when closed', () => {
     const js = read('public/js/customer.js');
-    assert.match(js, /document\.addEventListener\('click', armAlarm, \{ once: true \}\)/);
-    assert.match(js, /document\.addEventListener\('touchend', armAlarm, \{ once: true \}\)/);
+    assert.match(js, /document\.addEventListener\('click', primeSound, \{ once: true \}\)/);
+    assert.match(js, /document\.addEventListener\('touchend', primeSound, \{ once: true \}\)/);
+    assert.match(js, /function primeSound\(\) \{\n\s*soundPrimed = true;\n\s*chime\.unlock\(\);\n\s*armAlarm\(\);/, 'a tap unlocks the page chime too');
     assert.match(js, /if \(onScreen\(\) \|\| !alarm\.live\) chime\.play\('ready'\)/);
     assert.match(js, /if \(ringing\) alarm\.setMuted\(document\.visibilityState === 'visible'\)/);
     assert.match(js, /stopRinging\(true\);\n\s*alarm\.ack\(\);/);
     assert.match(js, /releaseAwake\(\);\n\s*alarm\.stop\(\);/);
     assert.match(read('src/app.js'), /"media-src 'self'"/);
     assert.doesNotMatch(read('public/js/lockscreen.js'), /noise|NOISE/, 'no hiss track any more');
+  });
+});
+
+describe('no tap yet (a shared link, the order QR, a delivery link): a sheet turns the ring on', () => {
+  test('shown while the order is prepared and nothing plays; a tap anywhere on it primes the sound', () => {
+    const js = read('public/js/customer.js');
+    assert.match(js, /const show = gateDue && !soundPrimed && !alarm\.live && order\?\.status === 'preparing';/);
+    assert.match(js, /\$\('sound-gate'\)\.addEventListener\('click'/);
+    const html = read('public/s.html');
+    assert.match(html, /id="sound-gate"[^>]*hidden/);
+    assert.match(html, /id="sound-on"[^>]*data-t="sound_button"/);
+  });
+
+  test('«فعّل التنبيه» stays orange (and calls) until this page had a tap, even with notifications on from before', () => {
+    const js = read('public/js/customer.js');
+    assert.match(js, /if \(!pushOn \|\| !soundPrimed \|\| button\.disabled\) return;/);
+    assert.doesNotMatch(js.slice(js.indexOf('async function autoSubscribe'), js.indexOf('function markEnabled')), /classList\.add\('is-on'\)/);
+    assert.match(read('public/css/customer.css'), /\.enable:not\(\.is-on\):not\(:disabled\) \{\n\s*animation: call/);
+  });
+
+  test('a delivery rings when it leaves, until this phone taps; the stream is armed for delivery too', () => {
+    const js = read('public/js/customer.js');
+    assert.doesNotMatch(js, /if \(order\.type === 'delivery'\) return;/);
+    assert.match(js, /if \(order\?\.status === 'out_for_delivery'\) return !store\.get\(outKey\(order\)\);/);
+    assert.match(js, /else if \(order\.status === 'out_for_delivery' && ringDue\(\)\) showReady\('out'\);/);
   });
 });
 
