@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ar" dir="rtl" class="pp" data-bs-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d1324">
+  <meta name="color-scheme" content="dark">
+  <title>دخول — Pocket Pager</title>
+  <link rel="icon" href="/favicon.ico" sizes="48x48">
+  <link rel="icon" href="/img/brand/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/img/brand/apple-touch-icon-180.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="preload" href="/fonts/readex-pro-arabic-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/vendor/bootstrap/bootstrap.rtl.min.css">
+  <link rel="stylesheet" href="/css/bs-bridge.css">
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/pp-tokens.css">
+  <link rel="stylesheet" href="/css/auth.css">
+  <script type="module" src="/js/powered.js"></script>
+  <script type="module" src="/js/login.js"></script>
+</head>
+<body class="auth" data-powered="inline">
+  <header class="auth-top">
+    <div class="container-lg d-flex align-items-center justify-content-between gap-3">
+      <a class="auth-home" href="/" aria-label="Pocket Pager: الصفحة الرئيسية"><img src="/img/brand/lockup-on-dark.svg" alt="Pocket Pager" width="150" height="34"></a>
+      <a class="auth-switch" href="/signup">معنديش حساب، <strong>ابدأ ببلاش</strong></a>
+    </div>
+  </header>
+
+  <main class="container-lg auth-main">
+    <form id="login" class="auth-card auth-narrow" novalidate>
+      <h1>أهلًا بيك تاني</h1>
+      <p class="lede">لصاحب المطعم ومدير الفرع. الكاشير مش محتاج يدخل من هنا، هو بيفتح شاشة الكاشير بالرقم السري.</p>
+
+      <div class="q">
+        <label for="f-login">رقم موبايلك</label>
+        <input class="input" id="f-login" name="login" type="text" inputmode="tel" autocomplete="username" dir="ltr" placeholder="01012345678" autocapitalize="none" autocorrect="off" spellcheck="false" required>
+        <p class="hint">الرقم اللي عملت بيه الحساب. لو معاك اسم مستخدم قديم من Aurexis اكتبه هنا.</p>
+      </div>
+      <div class="q">
+        <label for="f-password">كلمة السر</label>
+        <div class="input-with">
+          <input class="input" id="f-password" name="password" type="password" autocomplete="current-password" required>
+          <button class="input-eye" type="button" data-eye="f-password" aria-label="اعرض كلمة السر" aria-pressed="false"></button>
+        </div>
+      </div>
+
+      <p class="form-error" id="form-error" role="alert" hidden></p>
+      <button class="btn btn-primary btn-block btn-go" type="submit" id="go">دخول</button>
+
+      <div class="auth-links">
+        <span>نسيت كلمة السر؟ <a id="forgot" href="/support">كلّمنا ونرجّعها لك</a></span>
+        <span>أول مرة؟ <a href="/signup">اعمل حساب لمطعمك في دقيقتين</a></span>
+      </div>
+    </form>
+  </main>
+</body>
+</html>

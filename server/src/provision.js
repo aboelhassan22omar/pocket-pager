@@ -20,20 +20,26 @@ function checkId(value, field) {
   return value;
 }
 
-export function provisionBrand({ control }, { id, name }) {
+/** What a new branch starts with (existing branches keep theirs). */
+export const NEW_BRANCH_DEFAULTS = { delivery: 1, manual_numbers: 1 };
+
+export function provisionBrand({ control }, { id, name, selfServe = false }) {
   checkId(id, 'id');
   // Taken by the demo café and its visitors' own cafés.
   if (isDemo(id)) throw bad('id', 'المعرّف ده محجوز للديمو، اختار غيره');
   const brandName = cleanName(name);
   if (control.getBrand(id)) throw new HttpError(409, 'فيه براند بنفس المعرّف ده', { field: 'id' });
-  return control.createBrand({ id, name: brandName });
+  return control.createBrand({ id, name: brandName, selfServe });
 }
 
 /**
  * Creates a branch (control row + its own database). New branch ids are `<brand>-<area>`;
  * a branch whose id equals its brand id is allowed for single-branch shops.
  */
-export async function provisionBranch({ control, tenants, config }, { brandId, id, name, area = null, pin, qrMode = 'dynamic', tz = null }) {
+export async function provisionBranch(
+  { control, tenants, config },
+  { brandId, id, name, area = null, pin, qrMode = 'dynamic', tz = null, trial = true, awaitingPayment = false },
+) {
   checkId(brandId, 'brandId');
   checkId(id, 'id');
   if (!control.getBrand(brandId)) throw new HttpError(404, 'البراند ده مش موجود', { field: 'brandId' });
@@ -49,11 +55,16 @@ export async function provisionBranch({ control, tenants, config }, { brandId, i
   if (cleanTz && !isTimeZone(cleanTz)) throw bad('tz', 'التوقيت ده مش معروف');
 
   const pinCols = await pinFields(config.cookieSecret, pin);
-  // New branches start on a trial (TRIAL_DAYS, default 3).
-  const trialEndsAt = Date.now() + (config.trialDays ?? 3) * DAY_MS;
-  control.createBranch({ id, brandId, name: branchName, area: cleanArea, trialEndsAt });
+  // New branches start on a trial (TRIAL_DAYS, default 3), except a self-serve brand's branches
+  // after its first: those wait for a payment (awaitingPayment).
+  const trialEndsAt = trial && !awaitingPayment ? Date.now() + (config.trialDays ?? 3) * DAY_MS : null;
+  control.createBranch({ id, brandId, name: branchName, area: cleanArea, trialEndsAt, awaitingPayment });
   if (cleanTz) control.setBranchTz(id, cleanTz);
-  return tenants.get(id).store.initSettings({ pinHash: pinCols.pin_hash, pinSealed: pinCols.pin_sealed, qrMode });
+  const { store } = tenants.get(id);
+  store.initSettings({ pinHash: pinCols.pin_hash, pinSealed: pinCols.pin_sealed, qrMode });
+  // On from the start: delivery by the branch's own drivers, and the takeaway receipt box
+  // above the count on the cashier screen. The owner turns either off in «الخصائص».
+  return store.updateShop(NEW_BRANCH_DEFAULTS);
 }
 
 export function branchUrls(config, id) {

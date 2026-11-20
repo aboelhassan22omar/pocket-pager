@@ -55,7 +55,11 @@ function mountSheet(backdrop) {
 }
 
 function fieldHtml(f) {
-  if (f.type === 'heading') return `<h3 class="form-heading">${esc(f.label)}</h3>`;
+  if (f.type === 'heading') {
+    // A section of the sheet, with one plain line on what it is for.
+    const about = f.hint ? `<p class="form-heading-hint">${esc(f.hint)}</p>` : '';
+    return `<div class="form-section"><h3 class="form-heading">${esc(f.label)}</h3>${about}</div>`;
+  }
   if (f.type === 'html') return f.html;
   const id = `f-${f.name}`;
   const common = `id="${id}" name="${esc(f.name)}" ${f.required ? 'required' : ''} ${f.disabled ? 'disabled' : ''}`;

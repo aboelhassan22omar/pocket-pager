@@ -29,6 +29,8 @@ final class OrderModel: ObservableObject {
     private var tokenTask: Task<Void, Never>?
     private var isForeground = true
     private var isLoading = false
+    /// Resolving a link or a saved order right now (the full app shows the order then).
+    var isBusy: Bool { isLoading }
     private var lastURL: URL?
 
     init(appKind: String) {

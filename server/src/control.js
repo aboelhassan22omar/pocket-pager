@@ -165,6 +165,39 @@ export const CONTROL_MIGRATIONS = [
   CREATE UNIQUE INDEX owners_brand_username ON owners (brand_id, username COLLATE NOCASE);
   CREATE INDEX owners_username ON owners (username COLLATE NOCASE);
   `,
+  // 13: self-serve accounts (/signup). brands.self_serve: made by its owner, not by the super
+  //     (its unpaid branches wait for a payment instead of going to the trash).
+  //     owners.branch_id: a branch manager (sees that branch only); NULL = the brand's owner.
+  //     branches.awaiting_payment: added after the free trial, works once a payment is recorded.
+  //     trials: one free trial per phone and per device, ever (rows survive a deleted account).
+  //     billing_requests: an owner's «اشترك» (branches x months), confirmed by the super on payment.
+  `
+  ALTER TABLE brands ADD COLUMN self_serve INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE owners ADD COLUMN branch_id TEXT;
+  ALTER TABLE owners ADD COLUMN name TEXT;
+  ALTER TABLE branches ADD COLUMN awaiting_payment INTEGER NOT NULL DEFAULT 0;
+  CREATE INDEX owners_phone ON owners (phone);
+  CREATE TABLE trials (
+    key TEXT PRIMARY KEY,
+    brand_id TEXT NOT NULL,
+    used_at INTEGER NOT NULL
+  );
+  CREATE TABLE billing_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    brand_id TEXT NOT NULL REFERENCES brands (id),
+    branch_ids TEXT NOT NULL,
+    months INTEGER NOT NULL,
+    amount_egp INTEGER NOT NULL,
+    method TEXT NOT NULL,
+    reference TEXT,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'paid', 'cancelled')),
+    created_at INTEGER NOT NULL,
+    decided_at INTEGER,
+    actor TEXT
+  );
+  CREATE INDEX billing_requests_status ON billing_requests (status, created_at);
+  CREATE INDEX billing_requests_brand ON billing_requests (brand_id, created_at);
+  `,
 ];
 
 export const branchDbPath = (brandId, branchId) => `tenants/${brandId}/${branchId}/pager.db`;
@@ -176,13 +209,13 @@ export class ControlStore {
     this.sql = {
       brand: p('SELECT * FROM brands WHERE id = ?'),
       brands: p('SELECT * FROM brands ORDER BY created_at'),
-      insertBrand: p('INSERT INTO brands (id, name, created_at) VALUES (?, ?, ?)'),
+      insertBrand: p('INSERT INTO brands (id, name, created_at, self_serve) VALUES (?, ?, ?, ?)'),
       branch: p('SELECT * FROM branches WHERE id = ?'),
       branches: p('SELECT * FROM branches ORDER BY brand_id, created_at'),
       branchIds: p('SELECT id FROM branches ORDER BY id'),
       brandBranches: p('SELECT * FROM branches WHERE brand_id = ? ORDER BY created_at'),
-      insertBranch: p(`INSERT INTO branches (id, brand_id, name, area, db_path, created_at, plan_status, trial_ends_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
+      insertBranch: p(`INSERT INTO branches (id, brand_id, name, area, db_path, created_at, plan_status, trial_ends_at, awaiting_payment)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`),
       rename: p('UPDATE branches SET name = ? WHERE id = ?'),
       touch: p('UPDATE branches SET last_activity_at = ? WHERE id = ?'),
       setTrial: p('UPDATE branches SET trial_ends_at = ? WHERE id = ?'),
@@ -197,8 +230,22 @@ export class ControlStore {
       owner: p('SELECT * FROM owners WHERE id = ?'),
       ownersByName: p('SELECT * FROM owners WHERE username = ? COLLATE NOCASE ORDER BY id'),
       ownerInBrand: p('SELECT * FROM owners WHERE brand_id = ? AND username = ? COLLATE NOCASE'),
-      brandOwners: p('SELECT id, brand_id, username, email, phone, password_sealed, created_at, last_login_at FROM owners WHERE brand_id = ? ORDER BY id'),
-      insertOwner: p('INSERT INTO owners (brand_id, username, email, phone, password_hash, password_sealed, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'),
+      ownersByPhone: p('SELECT * FROM owners WHERE phone = ? ORDER BY id'),
+      brandOwners: p(`SELECT id, brand_id, branch_id, name, username, email, phone, password_sealed, created_at, last_login_at
+                      FROM owners WHERE brand_id = ? ORDER BY id`),
+      insertOwner: p(`INSERT INTO owners (brand_id, branch_id, name, username, email, phone, password_hash, password_sealed, created_at)
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+      deleteOwner: p('DELETE FROM owners WHERE id = ?'),
+      ownerName: p('UPDATE owners SET name = ? WHERE id = ?'),
+      trial: p('SELECT * FROM trials WHERE key = ?'),
+      insertTrial: p('INSERT OR IGNORE INTO trials (key, brand_id, used_at) VALUES (?, ?, ?)'),
+      setAwaiting: p('UPDATE branches SET awaiting_payment = ? WHERE id = ?'),
+      insertBilling: p(`INSERT INTO billing_requests (brand_id, branch_ids, months, amount_egp, method, reference, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)`),
+      billing: p('SELECT * FROM billing_requests WHERE id = ?'),
+      brandBilling: p('SELECT * FROM billing_requests WHERE brand_id = ? ORDER BY id DESC LIMIT 20'),
+      pendingBilling: p(`SELECT * FROM billing_requests WHERE status = 'pending' ORDER BY id`),
+      decideBilling: p(`UPDATE billing_requests SET status = ?, decided_at = ?, actor = ? WHERE id = ? AND status = 'pending'`),
       ownerContact: p('UPDATE owners SET email = ?, phone = ? WHERE id = ?'),
       resetOwner: p('UPDATE owners SET password_hash = ?, password_sealed = ?, pw_version = pw_version + 1 WHERE id = ?'),
       renameOwner: p('UPDATE owners SET username = ? WHERE id = ?'),
@@ -252,8 +299,8 @@ export class ControlStore {
     return this.sql.brands.all();
   }
 
-  createBrand({ id, name, createdAt = Date.now() }) {
-    this.sql.insertBrand.run(id, name, createdAt);
+  createBrand({ id, name, createdAt = Date.now(), selfServe = false }) {
+    this.sql.insertBrand.run(id, name, createdAt, selfServe ? 1 : 0);
     return this.getBrand(id);
   }
 
@@ -273,10 +320,13 @@ export class ControlStore {
     return this.sql.brandBranches.all(brandId);
   }
 
-  /** `trialEndsAt` null = no trial (used for branches migrated from v1). */
-  createBranch({ id, brandId, name, area = null, createdAt = Date.now(), trialEndsAt = null }) {
-    const status = trialEndsAt == null ? 'active' : 'trial';
-    this.sql.insertBranch.run(id, brandId, name, area, branchDbPath(brandId, id), createdAt, status, trialEndsAt);
+  /**
+   * `trialEndsAt` null = no trial (used for branches migrated from v1). `awaitingPayment`: a
+   * branch added after the free trial; it stays off until a payment is recorded.
+   */
+  createBranch({ id, brandId, name, area = null, createdAt = Date.now(), trialEndsAt = null, awaitingPayment = false }) {
+    const status = awaitingPayment ? 'suspended' : trialEndsAt == null ? 'active' : 'trial';
+    this.sql.insertBranch.run(id, brandId, name, area, branchDbPath(brandId, id), createdAt, status, trialEndsAt, awaitingPayment ? 1 : 0);
     return this.getBranch(id);
   }
 
@@ -314,6 +364,8 @@ export class ControlStore {
       this.sql.insertPayment.run(branchId, amountEgp, periodStart, periodEnd, note, actor, Date.now());
       const branch = this.getBranch(branchId);
       if (branch.paid_until == null || periodEnd > branch.paid_until) this.sql.setPaidUntil.run(periodEnd, branchId);
+      this.sql.setAwaiting.run(0, branchId);
+      this.sql.setPlanStatus.run(effectivePlan(this.getBranch(branchId)).status, branchId);
       return this.getBranch(branchId);
     });
   }
@@ -330,7 +382,8 @@ export class ControlStore {
     const trashed = [];
     for (const branch of this.listBranches()) {
       const plan = effectivePlan(branch, now);
-      if (!branch.deleted_at && plan.reason === 'trial_ended') {
+      // A self-serve brand's branch waits for its owner to subscribe instead.
+      if (!branch.deleted_at && plan.reason === 'trial_ended' && !this.getBrand(branch.brand_id)?.self_serve) {
         this.trashBranch(branch.id, 'trial_ended', now);
         this.audit({ actor: 'system', action: 'branch.trash', brandId: branch.brand_id, branchId: branch.id, detail: { reason: 'trial_ended' } });
         trashed.push(branch.id);
@@ -424,9 +477,59 @@ export class ControlStore {
     return this.sql.brandOwners.all(brandId);
   }
 
-  createOwner({ brandId, username, email = null, phone = null, passwordHash, passwordSealed = null }) {
-    const res = this.sql.insertOwner.run(brandId, username, email, phone, passwordHash, passwordSealed, Date.now());
+  /** `branchId` set = a branch manager (that branch only); null = the brand's owner. */
+  createOwner({ brandId, branchId = null, name = null, username, email = null, phone = null, passwordHash, passwordSealed = null }) {
+    const res = this.sql.insertOwner.run(brandId, branchId, name, username, email, phone, passwordHash, passwordSealed, Date.now());
     return this.getOwner(Number(res.lastInsertRowid));
+  }
+
+  /** Owners and managers with this phone (digits as stored), any brand. */
+  ownersByPhone(phone) {
+    return phone ? this.sql.ownersByPhone.all(phone) : [];
+  }
+
+  deleteOwner(id) {
+    this.sql.deleteOwner.run(id);
+  }
+
+  setOwnerName(id, name) {
+    this.sql.ownerName.run(name, id);
+    return this.getOwner(id);
+  }
+
+  // ---- free trials: once per phone and per device, ever ----
+
+  trialUsed(keys) {
+    return keys.some((k) => k && this.sql.trial.get(k));
+  }
+
+  markTrialUsed(keys, brandId, at = Date.now()) {
+    for (const k of keys) if (k) this.sql.insertTrial.run(k, brandId, at);
+  }
+
+  // ---- billing requests: the owner's «اشترك»; the super confirms once the money arrives ----
+
+  createBillingRequest({ brandId, branchIds, months, amountEgp, method, reference = null, at = Date.now() }) {
+    const res = this.sql.insertBilling.run(brandId, JSON.stringify(branchIds), months, amountEgp, method, reference, at);
+    return this.getBillingRequest(Number(res.lastInsertRowid));
+  }
+
+  getBillingRequest(id) {
+    const row = this.sql.billing.get(id);
+    return row ? { ...row, branch_ids: JSON.parse(row.branch_ids) } : null;
+  }
+
+  billingRequestsOfBrand(brandId) {
+    return this.sql.brandBilling.all(brandId).map((r) => ({ ...r, branch_ids: JSON.parse(r.branch_ids) }));
+  }
+
+  pendingBillingRequests() {
+    return this.sql.pendingBilling.all().map((r) => ({ ...r, branch_ids: JSON.parse(r.branch_ids) }));
+  }
+
+  /** 'paid' | 'cancelled'; false when it was already decided. */
+  decideBillingRequest(id, status, actor, at = Date.now()) {
+    return this.sql.decideBilling.run(status, at, actor, id).changes === 1;
   }
 
   /** Email and phone, both optional (null clears). */
@@ -582,6 +685,7 @@ export class ControlStore {
         'DELETE FROM device_errors WHERE brand_id = ?',
         'DELETE FROM devices WHERE brand_id = ?',
         'DELETE FROM payments WHERE branch_id IN (SELECT id FROM branches WHERE brand_id = ?)',
+        'DELETE FROM billing_requests WHERE brand_id = ?',
         'DELETE FROM owners WHERE brand_id = ?',
         'DELETE FROM branches WHERE brand_id = ?',
         'DELETE FROM brands WHERE id = ?',

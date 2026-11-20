@@ -17,6 +17,7 @@
   <link rel="stylesheet" href="/css/pp-tokens.css">
   <link rel="stylesheet" href="/css/landing.css">
   <script type="module" src="/js/powered.js"></script>
+  <script type="module" src="/js/landing.js"></script>
 </head>
 <body class="landing">
   <main class="hero">
@@ -46,12 +47,46 @@
     <p class="hero-lede">امسح الكود اللي عند الكاشير بكاميرا موبايلك. رقمك هيظهر على طول، وموبايلك هيرن أول ما طلبك يجهز.</p>
   </main>
 
+  <a class="landing-login" href="/login">دخول</a>
+
   <section class="for-shops" aria-labelledby="shops-title">
     <div class="for-shops-text">
       <h2 id="shops-title">عندك كافيه أو مطعم؟</h2>
       <p>عملاءك ياخدوا رقم من موبايلهم، من غير تطبيق ولا جهاز يرن في إيدهم. والكاشير يدوس على الرقم بس.</p>
     </div>
-    <a class="btn btn-primary for-shops-cta" href="/demo">جرّب الديمو</a>
+    <div class="for-shops-actions">
+      <a class="btn btn-primary for-shops-cta" href="/signup">ابدأ ببلاش 3 أيام</a>
+      <a class="btn btn-quiet" href="/demo">اتفرّج على الديمو</a>
+    </div>
+  </section>
+
+  <section class="how" aria-labelledby="how-title">
+    <h2 id="how-title">بيشتغل إزاي؟</h2>
+    <ol class="how-steps">
+      <li><strong>العميل يمسح الكود</strong><span>بكاميرا موبايله، من غير ما ينزّل حاجة. رقم طلبه بيظهر على طول.</span></li>
+      <li><strong>الكاشير يدوس «جاهز»</strong><span>من شاشة الكاشير على أي تابلت أو كمبيوتر أو موبايل.</span></li>
+      <li><strong>موبايل العميل يرن</strong><span>حتى والشاشة مقفولة. ييجي ياخد طلبه، من غير زحمة قدّام الكاونتر.</span></li>
+    </ol>
+  </section>
+
+  <section class="pricing" aria-labelledby="price-title">
+    <h2 id="price-title">الأسعار</h2>
+    <p class="pricing-lede">سعر للفرع في الشهر، وكل ما فروعك تزيد سعر الفرع بيقل. أول 3 أيام ببلاش، من غير فيزا.</p>
+    <div class="calc">
+      <label class="calc-label" for="calc-n">عندك كام فرع؟</label>
+      <div class="calc-stepper">
+        <button class="btn calc-btn" type="button" data-step="-1" aria-label="فرع أقل">−</button>
+        <input class="input calc-n num" id="calc-n" type="number" inputmode="numeric" min="1" max="500" value="1" dir="ltr">
+        <button class="btn calc-btn" type="button" data-step="1" aria-label="فرع أكتر">+</button>
+      </div>
+      <input class="calc-range" id="calc-range" type="range" min="1" max="120" value="1" aria-label="عدد الفروع">
+      <output class="calc-out" for="calc-n calc-range" id="calc-out" aria-live="polite">
+        <span class="calc-per"><strong class="num" id="calc-per">2,500</strong> ج.م للفرع في الشهر</span>
+        <span class="calc-total" id="calc-total">الإجمالي 2,500 ج.م في الشهر</span>
+        <span class="calc-next" id="calc-next"></span>
+      </output>
+    </div>
+    <a class="btn btn-primary for-shops-cta pricing-cta" href="/signup">ابدأ ببلاش</a>
   </section>
 </body>
 </html>

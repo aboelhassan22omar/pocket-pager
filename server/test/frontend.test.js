@@ -147,7 +147,7 @@ describe('Powered by', () => {
 
 const ALL_HTML = fs.readdirSync(path.join(root, 'public')).filter((f) => f.endsWith('.html')).map((f) => `public/${f}`);
 const PRIVATE_LABEL = ['public/app.html', 'public/setup.html'];
-const PP_OWN = ['public/index.html', 'public/demo.html', 'public/super.html', 'public/privacy.html'];
+const PP_OWN = ['public/index.html', 'public/demo.html', 'public/super.html', 'public/privacy.html', 'public/signup.html', 'public/login.html'];
 // PNG: width, height and colour type (2 = RGB, 6 = RGBA) from the IHDR chunk.
 const pngInfo = (p) => {
   const b = fs.readFileSync(p);
@@ -738,5 +738,33 @@ describe('stopped branch screen', () => {
       assert.match(read(page), /\/css\/base\.css/, page);
     }
     assert.match(read('public/css/base.css'), /body\.stopped-page/);
+  });
+});
+
+describe('self-serve pages', () => {
+  test('every sign-up question has its label and one line saying what and why', () => {
+    const html = read('public/signup.html');
+    const questions = html.match(/<div class="q">[\s\S]*?<\/div>\s*(?=<div class="q">|<div class="preview-mini|<div class="link-preview|<\/section>)/g);
+    assert.ok(questions.length >= 7, `found ${questions.length}`);
+    for (const q of questions) {
+      assert.match(q, /<label for="f-[a-z-]+">/, q.slice(0, 80));
+      assert.match(q, /<p class="hint">[^<]{12,}/, q.slice(0, 80));
+    }
+  });
+
+  test('link names: suggested from Arabic or English names, typed as small English', async () => {
+    const { slugify, cleanTyped, SLUG_RE } = await import('../public/js/slug.js');
+    assert.equal(slugify('كافيه زد'), 'cafe-zd');
+    assert.equal(slugify('Cafe Z!'), 'cafe-z');
+    assert.equal(slugify('مطعم النور'), 'restaurant-alnor');
+    for (const name of ['ركن الشاورما ٢', 'Burger & Co', 'ا']) assert.match(slugify(name), SLUG_RE, name);
+    assert.equal(cleanTyped('My Cafe__1'), 'my-cafe1');
+  });
+
+  test('the landing page starts the sign-up and shows the price', () => {
+    const html = read('public/index.html');
+    assert.match(html, /href="\/signup"/);
+    assert.match(html, /href="\/login"/);
+    assert.match(html, /id="calc-n"/);
   });
 });

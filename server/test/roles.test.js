@@ -326,9 +326,9 @@ describe('roles and plans', () => {
     await staff.post('/api/bar/login', { shopId: 'brandy-b', pin: '1234' });
     assert.equal((await staff.post('/api/bar/brandy-b/settings', { currentPin: '1234', newPin: '24680' })).status, 200);
     assert.equal(await pinOf('brandy-b'), '24680');
-    // Owners never get PINs; nothing sealed ends up in API shapes.
+    // The owner runs their branches: they read each one's current cashier PIN too.
     const mine = (await owners.x.get('/api/brand/brandx/overview')).data;
-    assert.ok(mine.branches.every((b) => !('pin' in b)));
+    assert.ok(mine.branches.every((b) => /^\d{4,8}$/.test(b.pin)));
     const raw = JSON.stringify((await su.get('/api/super/overview')).data);
     assert.ok(!/pin_hash|pin_sealed|password_sealed|scrypt\$/.test(raw));
   });

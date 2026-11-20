@@ -106,7 +106,7 @@ describe('owner contact: super and owner', () => {
     const owner = client(server.url);
     await owner.post('/api/brand/login', { username: 'phone.owner', password: 'owner-pass-123' });
     const view = (await owner.get('/api/brand/phonebrand/overview')).data.owner;
-    assert.deepEqual(view, { username: 'phone.owner', email: null, phone: '+201112223333' });
+    assert.deepEqual(view, { username: 'phone.owner', name: null, email: null, phone: '+201112223333', role: 'owner', branchId: null });
 
     const bad = await owner.post('/api/brand/phonebrand/account', { email: 'x@y.co', phone: 'abc' });
     assert.equal(bad.status, 400);
@@ -115,7 +115,7 @@ describe('owner contact: super and owner', () => {
 
     const saved = await owner.post('/api/brand/phonebrand/account', { email: 'me@cafe.co', phone: '' });
     assert.equal(saved.status, 200);
-    assert.deepEqual(saved.data.owner, { username: 'phone.owner', email: 'me@cafe.co', phone: null });
+    assert.deepEqual(saved.data.owner, { username: 'phone.owner', name: null, email: 'me@cafe.co', phone: null, role: 'owner', branchId: null });
     assert.equal((await ownerOf()).email, 'me@cafe.co');
 
     assert.equal((await client(server.url).post('/api/brand/phonebrand/account', { email: 'a@b.co' })).status, 401, 'needs the owner session');

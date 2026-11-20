@@ -249,7 +249,9 @@
     bottom: 0;
     z-index: 1030;
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    /* One row, however many sections the role has (four to five). */
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
     height: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
     padding: 6px 4px env(safe-area-inset-bottom);
     background: color-mix(in srgb, var(--surface) 94%, transparent);
@@ -412,3 +414,393 @@
 .driver-who .num { color: var(--muted); font-size: 0.9rem; text-align: start; }
 .driver-actions { display: flex; gap: 6px; flex-shrink: 0; }
 .driver-empty { padding: 4px 0; }
+
+/* The branch's first action (its links and PIN) takes a row of its own. */
+.owner .card-actions > .btn-primary {
+  flex: 1 1 100%;
+}
+
+.apps-link {
+  margin: 12px 0;
+}
+
+/* ---------- self-serve: plan line, first steps, links, team, subscription ---------- */
+
+.plan-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px solid rgb(255 106 19 / 0.35);
+  border-radius: var(--r-card);
+  background: rgb(255 106 19 / 0.08);
+}
+
+.plan-banner > .icon {
+  flex: none;
+  color: var(--accent);
+}
+
+.plan-banner > div {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.plan-banner span {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.plan-banner .btn {
+  flex: none;
+}
+
+.plan-banner.is-stop {
+  border-color: rgb(240 69 58 / 0.45);
+  background: rgb(240 69 58 / 0.08);
+}
+
+.plan-banner.is-stop > .icon {
+  color: #ff8a7a;
+}
+
+.plan-banner.is-wait {
+  border-color: var(--line-strong);
+  background: var(--surface);
+}
+
+.welcome {
+  margin-bottom: 20px;
+  padding: clamp(16px, 3vw, 24px);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--surface);
+}
+
+.welcome h2 {
+  margin: 0 0 4px;
+  font-size: var(--fs-lg);
+  font-weight: 700;
+}
+
+.welcome-steps {
+  display: grid;
+  gap: 0;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: w;
+}
+
+.welcome-steps li {
+  display: grid;
+  gap: 4px;
+  padding: 14px 0 14px;
+  padding-inline-start: 44px;
+  border-top: 1px solid var(--line);
+  position: relative;
+  counter-increment: w;
+}
+
+.welcome-steps li::before {
+  content: counter(w);
+  position: absolute;
+  inset-inline-start: 0;
+  top: 14px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+  font-size: var(--fs-sm);
+}
+
+.welcome-steps span {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+}
+
+.welcome-steps b {
+  color: var(--pp-amber, #ffb020);
+  letter-spacing: 0.12em;
+}
+
+.welcome-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.pane-intro {
+  max-width: 62ch;
+  margin: 0 0 12px;
+  line-height: 1.7;
+}
+
+/* A branch's links (sheet) */
+.links-list {
+  display: grid;
+  gap: 8px;
+}
+
+.link-row,
+.pin-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--r-control);
+  background: var(--bg);
+}
+
+.link-row > div:first-child,
+.pin-row > div:first-child {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.link-row small,
+.pin-row small {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.link-row code {
+  color: var(--muted);
+  font-family: var(--font);
+  font-size: var(--fs-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.link-row-actions {
+  display: flex;
+  flex: none;
+  gap: 6px;
+}
+
+.pin-value {
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: var(--pp-amber, #ffb020);
+}
+
+/* Team */
+.team-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.team-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--surface);
+}
+
+.team-avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  font-weight: 700;
+}
+
+.team-who {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.team-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.invite-text {
+  margin: 0;
+  padding: 14px;
+  border-radius: var(--r-control);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  white-space: pre-wrap;
+  line-height: 1.7;
+}
+
+/* Subscription */
+.bill-branches {
+  display: grid;
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--line);
+}
+
+.bill-branch {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--surface);
+}
+
+.bill-status {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.bill-status[data-status='suspended'] {
+  color: #ff8a7a;
+}
+
+.bill-h {
+  margin: 8px 0 0;
+  font-size: var(--fs-md);
+  font-weight: 700;
+}
+
+.months {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.month {
+  display: grid;
+  gap: 2px;
+  padding: 12px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-control);
+  background: var(--surface);
+  color: var(--text);
+  text-align: center;
+  transition: border-color 160ms var(--ease), background-color 160ms var(--ease);
+}
+
+.month span {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.month[aria-checked='true'] {
+  border-color: var(--accent);
+  background: rgb(255 106 19 / 0.1);
+}
+
+.month:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.bill-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  border-radius: var(--r-card);
+  background: var(--surface-2);
+}
+
+.bill-total > div {
+  display: grid;
+  gap: 2px;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.bill-total small {
+  color: var(--accent);
+}
+
+.bill-total strong {
+  font-size: var(--fs-xl);
+}
+
+.pay-methods {
+  display: grid;
+  gap: 8px;
+}
+
+.pay-method {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--r-control);
+  background: var(--surface);
+}
+
+.pay-method span {
+  flex: 1;
+  color: var(--muted);
+}
+
+.tiers summary,
+.danger-zone summary {
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.tiers-table {
+  margin-top: 10px;
+  max-width: 28rem;
+}
+
+.danger-zone {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.danger-zone[open] summary {
+  margin-bottom: 8px;
+}
+
+@media (max-width: 575.98px) {
+  .months {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .link-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .team-row {
+    flex-wrap: wrap;
+  }
+
+  .team-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .plan-banner {
+    flex-wrap: wrap;
+  }
+}
