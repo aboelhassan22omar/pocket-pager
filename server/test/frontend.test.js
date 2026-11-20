@@ -10,7 +10,9 @@ import {
 import { reviewHtml } from '../public/js/review.js';
 import { mountPoweredBy, AUREXIS_URL, AUREXIS_MARK } from '../public/js/powered.js';
 import { shareMeta } from '../src/views.js';
-import { elapsedLabel, esc, isCashierApp, serverNow, SPLASH_MIN_MS, syncClock } from '../public/js/util.js';
+import {
+  api, ApiError, elapsedLabel, esc, isCashierApp, serverNow, showTrialEnded, SPLASH_MIN_MS, syncClock,
+} from '../public/js/util.js';
 import { etaText } from '../public/js/queue-text.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -681,5 +683,60 @@ describe('a device clock that is off', () => {
     } finally {
       syncClock(Date.now());
     }
+  });
+});
+
+describe('free trial ended screen', () => {
+  // Just enough DOM for showTrialEnded.
+  function trialDoc() {
+    const make = (tag) => ({
+      tag, children: [], attrs: {}, className: '', textContent: '',
+      setAttribute(k, v) { this.attrs[k] = v; },
+      append(...els) { this.children.push(...els); },
+    });
+    const paused = [];
+    const body = make('body');
+    body.className = 'has-tabbar is-ready';
+    body.children = [make('div'), make('section')];
+    body.classList = { contains: (c) => body.className.split(' ').includes(c) };
+    body.replaceChildren = (...els) => { body.children = els; };
+    return {
+      body, title: 'الطلبات', paused, createElement: make,
+      querySelectorAll: () => [{ pause: () => paused.push(1) }],
+    };
+  }
+
+  test('the whole page becomes the message alone, and the ring stops', () => {
+    const doc = trialDoc();
+    assert.equal(showTrialEnded('التجربة المجانية خلصت', doc), true);
+    assert.equal(doc.body.className, 'trial-ended-page');
+    assert.equal(doc.body.children.length, 1);
+    const [main] = doc.body.children;
+    assert.equal(main.attrs.role, 'alert');
+    assert.deepEqual(main.children.map((el) => el.tag), ['img', 'h1']);
+    assert.equal(main.children[1].textContent, 'التجربة المجانية خلصت');
+    assert.equal(doc.title, 'التجربة المجانية خلصت');
+    assert.equal(doc.paused.length, 1);
+    assert.equal(showTrialEnded('x', doc), true, 'once');
+    assert.equal(doc.body.children[0], main);
+  });
+
+  test('without a page (Node) api() still throws the 402 with its code', async () => {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response(JSON.stringify({ error: 'التجربة المجانية خلصت', code: 'trial_ended' }), {
+      status: 402, headers: { 'content-type': 'application/json' },
+    });
+    try {
+      await assert.rejects(api('/api/b/x'), (err) => err instanceof ApiError && err.status === 402 && err.data.code === 'trial_ended');
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  test('every page that talks to the server loads the screen styles', () => {
+    for (const page of ['public/s.html', 'public/bar.html', 'public/qr.html', 'public/settings.html', 'public/brand.html']) {
+      assert.match(read(page), /\/css\/base\.css/, page);
+    }
+    assert.match(read('public/css/base.css'), /body\.trial-ended-page/);
   });
 });

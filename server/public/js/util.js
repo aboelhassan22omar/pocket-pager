@@ -35,8 +35,43 @@ export async function api(path, { method = 'GET', body, raw, contentType, header
   }
   noteBuild(res.headers.get('x-build'));
   const data = (res.headers.get('content-type') ?? '').includes('json') ? await res.json() : null;
+  if (res.status === 402 && data?.code === TRIAL_ENDED_CODE && showTrialEnded(data.error)) {
+    // The page is over: nothing that called the server goes on (no error toasts, no retries).
+    return new Promise(() => {});
+  }
   if (!res.ok) throw new ApiError(res.status, data?.error ?? 'حصلت مشكلة. جرّب تاني', data);
   return data;
+}
+
+// ---------- the free trial ended ----------
+// The server answers anything about a branch (or a brand) whose trial ran out with this code
+// (src/plans.js). Every page then shows that message alone, full screen, and nothing else.
+
+export const TRIAL_ENDED_CODE = 'trial_ended';
+const TRIAL_ENDED_TEXT = 'التجربة المجانية خلصت';
+// The super may give the branch more days or a payment: the screen checks again now and then.
+const TRIAL_RECHECK_MS = 10 * 60_000;
+
+/** Replaces the whole page with the message. True once it's on screen. */
+export function showTrialEnded(message = TRIAL_ENDED_TEXT, doc = globalThis.document) {
+  if (!doc?.body) return false;
+  if (doc.body.classList.contains('trial-ended-page')) return true;
+  for (const media of doc.querySelectorAll('audio, video')) media.pause();
+  const main = doc.createElement('main');
+  main.className = 'trial-ended';
+  main.setAttribute('role', 'alert');
+  const mark = doc.createElement('img');
+  mark.className = 'trial-ended-mark';
+  mark.src = '/img/brand/app-tile.svg';
+  mark.alt = '';
+  const title = doc.createElement('h1');
+  title.textContent = message || TRIAL_ENDED_TEXT;
+  main.append(mark, title);
+  doc.body.className = 'trial-ended-page';
+  doc.body.replaceChildren(main);
+  doc.title = title.textContent;
+  if (doc === globalThis.document) setTimeout(() => globalThis.location.reload(), TRIAL_RECHECK_MS);
+  return true;
 }
 
 // ---------- a new version on the server: staff pages reload themselves ----------

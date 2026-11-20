@@ -5,7 +5,7 @@ import { channels } from '../bus.js';
 import {
   DEVICE_CLAIMS, hashDevice, loyaltyEnabled, loyaltyView, newDeviceToken, readDeviceToken, setDeviceCookie,
 } from '../loyalty.js';
-import { canClaim } from '../plans.js';
+import { canClaim, trialEndedError, trialOver } from '../plans.js';
 import { createRateLimiter } from '../ratelimit.js';
 import { openSse } from '../sse.js';
 import { CLOSED_STATUSES, FEEDBACK_WINDOW_MS, OPEN_STATUSES } from '../store.js';
@@ -91,6 +91,8 @@ export default async function customerRoutes(app, { config, control, tenants, bu
   await app.register(async (b) => {
     b.addHook('onRequest', async (req) => {
       req.ctx = tenants.resolve(req.params.branch);
+      // Trial over: the customer page shows only that (open orders included).
+      if (trialOver(req.ctx.branch)) throw trialEndedError();
     });
 
     function loadOrder(req, id) {

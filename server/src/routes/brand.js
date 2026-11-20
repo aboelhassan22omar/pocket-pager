@@ -16,7 +16,7 @@ import {
 } from '../ring.js';
 import { DELIVERY_CLOSE_MINUTES, DRIVER_NAME_MAX, SHOP_ID_RE } from '../store.js';
 import { OWNER_COOKIE, requireJson, requireOwner, setOwnerSession } from '../sessions.js';
-import { FEATURES } from '../plans.js';
+import { brandTrialOver, FEATURES, trialEndedError } from '../plans.js';
 import { parsePlaceId } from '../upgrades.js';
 import { parseGoogleReviewUrl, sniffImage } from './bar.js';
 import { cleanBranchName } from './super.js';
@@ -142,6 +142,8 @@ export default async function brandRoutes(app, deps) {
   await app.register(async (b) => {
     b.addHook('onRequest', async (req) => {
       req.owner = requireOwner(req, deps, req.params.brand);
+      // Every branch's trial ran out: the owner page shows only that.
+      if (brandTrialOver(control.branchesOfBrand(req.params.brand))) throw trialEndedError();
       if (req.method !== 'GET' && isDemo(req.params.brand)) throw new HttpError(403, DEMO_LOCKED);
       const url = req.url.split('?')[0];
       requireJson(req, url.endsWith('/promo-image') ? IMAGE_TYPES : url.endsWith('/ring-file') ? AUDIO_TYPES : []);
