@@ -5,7 +5,7 @@ import { pinFields, PIN_RE, verifyPin } from '../auth.js';
 import { channels } from '../bus.js';
 import { staffCookieName } from '../cookies.js';
 import { egyptMobile, localMobile } from '../contact.js';
-import { canClaim, planView } from '../plans.js';
+import { canClaim, planView, trialEndedError, trialOver } from '../plans.js';
 import { deviceFromRequest, setStaffSession, verifyStaffSession } from '../sessions.js';
 import { HttpError } from '../errors.js';
 import { randomId } from '../util.js';
@@ -117,6 +117,8 @@ export default async function barRoutes(app, deps) {
   await app.register(async (bar) => {
     bar.addHook('onRequest', async (req) => {
       requireBar(req);
+      // Trial over: the cashier screen, its settings and its QR screen show only that.
+      if (trialOver(req.ctx.branch)) throw trialEndedError();
       const isLogo = req.routeOptions.url?.endsWith('/logo');
       // Every visitor shares the demo café: its settings stay as they are.
       const locked = ['/settings', '/pos/rotate'].some((path) => req.routeOptions.url?.endsWith(path));

@@ -5,7 +5,10 @@ import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { hashPin } from '../src/auth.js';
 import { openControl } from '../src/control.js';
-import { DAY_MS, effectivePlan, featureFlags, planView } from '../src/plans.js';
+import { DatabaseSync } from 'node:sqlite';
+import {
+  brandTrialOver, DAY_MS, effectivePlan, featureFlags, planView, trialOver,
+} from '../src/plans.js';
 import { seal, unseal } from '../src/vault.js';
 import { ADMIN_TOKEN, client, startServer } from './helpers.js';
 
@@ -51,6 +54,27 @@ describe('plan state machine', () => {
 
   test('a trashed branch is suspended whatever it paid', () => {
     assert.deepEqual(effectivePlan({ deleted_at: now, paid_until: at(30) }, now), { status: 'suspended', reason: 'deleted', until: null });
+  });
+
+  test('trial over: before the hourly job trashes the branch and after; nothing else counts', () => {
+    assert.equal(trialOver({ trial_ends_at: at(-1) }, now), true);
+    assert.equal(trialOver({ trial_ends_at: at(1) }, now), false);
+    assert.equal(trialOver({ trial_ends_at: at(-1), paid_until: at(10) }, now), false, 'paid');
+    assert.equal(trialOver({ deleted_at: now, deleted_reason: 'trial_ended' }, now), true);
+    assert.equal(trialOver({ deleted_at: now, deleted_reason: 'manual', trial_ends_at: at(-1) }, now), false);
+    assert.equal(trialOver({ suspended_manual: 1, trial_ends_at: at(-1) }, now), false, 'stopped by the super');
+  });
+
+  test('a brand is over when only ended trials (and branches trashed by hand) are left', () => {
+    const over = { trial_ends_at: at(-1) };
+    const trashedOver = { deleted_at: now, deleted_reason: 'trial_ended' };
+    const live = { trial_ends_at: at(2) };
+    const trashed = { deleted_at: now, deleted_reason: 'manual' };
+    assert.equal(brandTrialOver([over, trashedOver], now), true);
+    assert.equal(brandTrialOver([trashedOver, trashed], now), true);
+    assert.equal(brandTrialOver([over, live], now), false, 'a live branch keeps the owner page');
+    assert.equal(brandTrialOver([trashed], now), false);
+    assert.equal(brandTrialOver([], now), false);
   });
 
   test('super can force a feature off over the owner toggle', () => {
@@ -398,5 +422,73 @@ describe('roles and plans', () => {
     await anon.post('/api/admin/shops', { id: 'admin-shop', name: 'Admin', pin: '1234' }, { headers: { 'x-admin-token': ADMIN_TOKEN } });
     const { entries } = (await su.get('/api/super/audit?limit=5')).data;
     assert.ok(entries.some((e) => e.actor === 'admin-token' && e.branch_id === 'admin-shop'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The free trial ended: every page about it gets only that message
+// ---------------------------------------------------------------------------
+
+describe('free trial ended', () => {
+  let server;
+  let su;
+  const setTrialEnd = (branchId, offsetDays) => {
+    const db = new DatabaseSync(path.join(server.dataDir, 'control.db'));
+    try {
+      db.prepare('UPDATE branches SET trial_ends_at = ? WHERE id = ?').run(Date.now() + offsetDays * DAY_MS, branchId);
+    } finally {
+      db.close();
+    }
+  };
+  const isTrialEnded = (res) => res.status === 402 && res.data.code === 'trial_ended' && res.data.error === 'التجربة المجانية خلصت';
+
+  before(async () => {
+    server = await startServer({ SUPER_PASSWORD_HASH: await hashPin(SUPER_PASSWORD) });
+    su = client(server.url);
+    await su.post('/api/super/login', { password: SUPER_PASSWORD });
+    await su.post('/api/super/brands', { id: 'brandt', name: 'Brand T' });
+    await su.post('/api/super/brands/brandt/branches', { id: 'brandt-a', name: 'T A', pin: '1234' });
+    await su.post('/api/super/brands/brandt/branches', { id: 'brandt-b', name: 'T B', pin: '1234' });
+    await su.post('/api/super/brands/brandt/owners', { username: 'owner.t', password: 'owner-t-pass' });
+  });
+  after(async () => {
+    await server?.stop();
+  });
+
+  test('cashier, settings, QR screen and customers of that branch get only the message', async () => {
+    const staff = client(server.url);
+    assert.equal((await staff.post('/api/bar/login', { shopId: 'brandt-a', pin: '1234' })).status, 200);
+    assert.equal((await staff.get('/api/bar/brandt-a/state')).status, 200);
+    setTrialEnd('brandt-a', -1);
+
+    for (const res of [
+      await staff.get('/api/bar/brandt-a/state'),
+      await staff.get('/api/bar/brandt-a/pos'),
+      await staff.post('/api/bar/brandt-a/orders', {}),
+      await client(server.url).get('/api/b/brandt-a'),
+      await client(server.url).post('/api/b/brandt-a/claim', { n: 'x' }),
+    ]) assert.ok(isTrialEnded(res), JSON.stringify(res.data));
+    assert.equal((await client(server.url).get('/api/bar/brandt-a/state')).status, 401, 'signed out: the login first');
+    assert.equal((await client(server.url).get('/api/b/brandt-b')).status, 200, 'the other branch goes on');
+  });
+
+  test('the owner keeps the page while a branch is live, and gets only the message after', async () => {
+    const owner = client(server.url);
+    assert.equal((await owner.post('/api/brand/login', { username: 'owner.t', password: 'owner-t-pass' })).status, 200);
+    assert.equal((await owner.get('/api/brand/brandt/overview')).status, 200);
+
+    setTrialEnd('brandt-b', -1);
+    assert.ok(isTrialEnded(await owner.get('/api/brand/brandt/overview')));
+    assert.ok(isTrialEnded(await owner.get('/api/brand/brandt/texts')));
+    assert.equal((await su.get('/api/super/overview')).status, 200, 'the super still sees everything');
+  });
+
+  test('more trial days bring every page back', async () => {
+    setTrialEnd('brandt-a', 3);
+    const owner = client(server.url);
+    await owner.post('/api/brand/login', { username: 'owner.t', password: 'owner-t-pass' });
+    assert.equal((await owner.get('/api/brand/brandt/overview')).status, 200);
+    assert.equal((await client(server.url).get('/api/b/brandt-a')).status, 200);
+    assert.ok(isTrialEnded(await client(server.url).get('/api/b/brandt-b')), 'B is still over');
   });
 });

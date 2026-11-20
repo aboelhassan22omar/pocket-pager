@@ -1,6 +1,8 @@
 // Branch plans (DESIGN §17). The stored plan_status is only a cache for dashboards;
 // requests always use effectivePlan().
 
+import { HttpError } from './errors.js';
+
 export const DAY_MS = 24 * 3600 * 1000;
 export const GRACE_DAYS = 3;
 export const PLAN_STATUSES = ['trial', 'active', 'past_due', 'suspended'];
@@ -40,6 +42,28 @@ export function planView(branch, now = Date.now()) {
 }
 
 export const canClaim = (branch, now = Date.now()) => effectivePlan(branch, now).status !== 'suspended';
+
+/** The free trial ran out unpaid: before the hourly job trashes the branch, and after. */
+export function trialOver(branch, now = Date.now()) {
+  if (branch.deleted_at) return branch.deleted_reason === 'trial_ended';
+  return effectivePlan(branch, now).reason === 'trial_ended';
+}
+
+/**
+ * Nothing left in the brand but branches whose trial ran out (branches the super trashed by
+ * hand don't count either way): its owner sees only that the trial ended.
+ */
+export function brandTrialOver(branches, now = Date.now()) {
+  const over = branches.filter((b) => trialOver(b, now));
+  return over.length > 0 && branches.every((b) => b.deleted_at || over.includes(b));
+}
+
+/**
+ * The one reply for anything about a branch (or brand) whose trial ran out: every page shows
+ * this message alone, full screen (public/js/util.js), for the cashier, the owner and customers.
+ */
+export const TRIAL_ENDED = { status: 402, message: 'التجربة المجانية خلصت', code: 'trial_ended' };
+export const trialEndedError = () => new HttpError(TRIAL_ENDED.status, TRIAL_ENDED.message, { code: TRIAL_ENDED.code });
 
 /** Effective feature flags: the owner's toggle, unless super forced it off. */
 export function featureFlags(branch) {
