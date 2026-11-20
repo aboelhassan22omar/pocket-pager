@@ -27,7 +27,33 @@ final class AccountModel: ObservableObject {
         } else {
             screen = .welcome
         }
+        #if DEBUG
+        // Screenshots in CI (.github/workflows/ios-screens.yml): `-ppScreen <name>` opens one screen.
+        switch UserDefaults.standard.string(forKey: "ppScreen") {
+        case "login": screen = .login
+        case "signup1", "signup2", "signup3": screen = .signup
+        case "ready": if let sample = Self.sampleResult { screen = .ready(sample) }
+        default: break
+        }
+        #endif
     }
+
+    #if DEBUG
+    static var previewStep: Int {
+        switch UserDefaults.standard.string(forKey: "ppScreen") {
+        case "signup2": return 2
+        case "signup3": return 3
+        default: return 1
+        }
+    }
+
+    static var previewFilled: Bool { UserDefaults.standard.string(forKey: "ppScreen")?.hasPrefix("signup") == true }
+
+    private static var sampleResult: AccountAPI.SignupResult? {
+        let json = #"{"brandId":"cafe-zd","branchId":"cafe-zd-maadi","pin":"4821","trial":true,"trialDays":3,"urls":{"bar":"https://pager.aurexis.cc/bar/cafe-zd-maadi","qr":"https://pager.aurexis.cc/qr/cafe-zd-maadi","settings":"https://pager.aurexis.cc/settings/cafe-zd-maadi"}}"#
+        return try? JSONDecoder().decode(AccountAPI.SignupResult.self, from: Data(json.utf8))
+    }
+    #endif
 
     private static var hasSession: Bool {
         (HTTPCookieStorage.shared.cookies ?? []).contains { $0.name == "sp_owner" && ($0.expiresDate ?? .distantFuture) > Date() }

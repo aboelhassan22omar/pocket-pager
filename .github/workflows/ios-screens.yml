@@ -1,0 +1,73 @@
+name: iOS screens
+
+# The restaurant side of the iPhone app, screen by screen, on a real iOS simulator: builds the app
+# (Debug, unsigned), opens each screen with `-ppScreen <name>` (AccountModel, DEBUG only) and
+# saves a screenshot. Artifact: ios-screens (PNG per screen). Runs on PRs that touch ios/ and by hand.
+on:
+  pull_request:
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios-screens.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  screens:
+    name: iOS - screenshots of every screen
+    runs-on: macos-26
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v7
+      - name: Select newest Xcode
+        run: |
+          latest=$(find /Applications -maxdepth 1 -name 'Xcode_*.app' | sort -V | tail -1)
+          sudo xcode-select -s "$latest"
+          xcodebuild -version
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate project
+        env:
+          PAGER_DOMAIN: pager.aurexis.cc
+          ALLOW_XCODE_26: "1"
+        run: bash generate.sh
+      - name: Boot an iPhone simulator
+        run: |
+          udid=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devices = [d for rt, ds in json.load(sys.stdin)["devices"].items() if "iOS" in rt for d in ds]
+          pick = [d for d in devices if "Pro Max" in d["name"]] or [d for d in devices if "iPhone" in d["name"]]
+          print(pick[-1]["udid"])')
+          echo "SIM=$udid" >> "$GITHUB_ENV"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl status_bar "$udid" override --time "9:41" --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3
+      - name: Build for the simulator
+        run: |
+          set -o pipefail
+          xcodebuild -project PocketPager.xcodeproj -scheme PocketPager -configuration Debug \
+            -destination "id=$SIM" -derivedDataPath "$RUNNER_TEMP/dd" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build -quiet
+          app=$(find "$RUNNER_TEMP/dd/Build/Products" -maxdepth 2 -name 'PocketPager.app' | head -1)
+          xcrun simctl install "$SIM" "$app"
+      - name: Screenshot every screen
+        run: |
+          mkdir -p "$RUNNER_TEMP/screens"
+          n=0
+          for screen in welcome login signup1 signup2 signup3 ready; do
+            n=$((n + 1))
+            xcrun simctl terminate "$SIM" cc.aurexis.pager >/dev/null 2>&1 || true
+            xcrun simctl launch "$SIM" cc.aurexis.pager -ppScreen "$screen"
+            sleep 6
+            xcrun simctl io "$SIM" screenshot "$RUNNER_TEMP/screens/0$n-$screen.png"
+          done
+          ls -la "$RUNNER_TEMP/screens"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ios-screens
+          path: ${{ runner.temp }}/screens
+          if-no-files-found: error
