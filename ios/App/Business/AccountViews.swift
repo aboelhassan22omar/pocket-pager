@@ -245,6 +245,18 @@ struct SignupView: View {
             .animation(.easeOut(duration: 0.25), value: step)
         }
         .scrollDismissesKeyboard(.interactively)
+        #if DEBUG
+        .onAppear {
+            guard AccountModel.previewFilled else { return }
+            form.name = "أحمد علي"
+            form.phone = "01012345678"
+            form.password = "secret1"
+            form.brandName = "كافيه زد"
+            form.branchName = "المعادي"
+            form.branchSlug = "maadi"
+            step = AccountModel.previewStep
+        }
+        #endif
     }
 
     private var stepOne: some View {

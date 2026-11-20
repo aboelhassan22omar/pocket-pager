@@ -65,10 +65,16 @@ jobs:
           grep -q 'package="cc.aurexis.pocketpager"' "$RUNNER_TEMP/manifest.xml"
           grep -q 'android:targetSdkVersion="36"' "$RUNNER_TEMP/manifest.xml"
           if grep -q 'REQUEST_INSTALL_PACKAGES' "$RUNNER_TEMP/manifest.xml"; then echo "::error::no install permission on Play"; exit 1; fi
-          # A phone's APK from the bundle, as Play would serve it, must read right.
+          # A phone's APK from the bundle, as Play would serve it, must read right. It is also the
+          # copy to try on a phone before uploading (signed with a test key: install by hand only).
+          keytool -genkeypair -keystore "$RUNNER_TEMP/test.jks" -alias test -storepass testtest -keypass testtest \
+            -keyalg RSA -keysize 2048 -validity 3650 -dname "CN=Pocket Pager test" >/dev/null 2>&1
           java -jar "$RUNNER_TEMP/bundletool.jar" build-apks --bundle="$RUNNER_TEMP/pocket-pager.aab" \
-            --output="$RUNNER_TEMP/universal.apks" --mode=universal
+            --output="$RUNNER_TEMP/universal.apks" --mode=universal \
+            --ks="$RUNNER_TEMP/test.jks" --ks-key-alias=test --ks-pass=pass:testtest --key-pass=pass:testtest
           unzip -o -q "$RUNNER_TEMP/universal.apks" universal.apk -d "$RUNNER_TEMP"
+          "$BT/apksigner" verify --min-sdk-version 24 "$RUNNER_TEMP/universal.apk"
+          cp "$RUNNER_TEMP/universal.apk" "$RUNNER_TEMP/pocket-pager-try.apk"
           "$BT/aapt2" dump badging "$RUNNER_TEMP/universal.apk" | tee "$RUNNER_TEMP/badging.txt" | head -12
           grep -q "application-label:'Pocket Pager'" "$RUNNER_TEMP/badging.txt"
           grep -q "launchable-activity: name='cc.aurexis.pocketpager.MainActivity'" "$RUNNER_TEMP/badging.txt"
@@ -77,5 +83,5 @@ jobs:
           name: pocket-pager-play
           path: |
             ${{ runner.temp }}/pocket-pager.aab
-            ${{ runner.temp }}/universal.apk
+            ${{ runner.temp }}/pocket-pager-try.apk
           if-no-files-found: error
