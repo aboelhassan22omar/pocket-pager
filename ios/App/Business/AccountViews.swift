@@ -126,7 +126,19 @@ struct WelcomeView: View {
                     .tag(i)
                 }
             }
-            .tabViewStyle(.page(indexDisplayMode: .always))
+            .tabViewStyle(.page(indexDisplayMode: .never))
+
+            // Our own dots: the system's run left to right, so the third lit up on page one.
+            HStack(spacing: 8) {
+                ForEach(pages.indices, id: \.self) { i in
+                    Capsule()
+                        .fill(i == page ? Theme.accent : Theme.muted.opacity(0.35))
+                        .frame(width: i == page ? 22 : 8, height: 8)
+                }
+            }
+            .animation(.easeOut(duration: 0.25), value: page)
+            .padding(.bottom, 18)
+            .accessibilityHidden(true)
 
             VStack(spacing: 12) {
                 PrimaryButton(title: "ابدأ ببلاش \(account.trialDays) أيام") { account.screen = .signup }
@@ -308,6 +320,10 @@ struct SignupView: View {
                 Text(slugState.text).font(.footnote).foregroundStyle(slugState.ok ? Theme.ready : Color(hex: 0xFF8A7A))
             }
             CustomerPreview(name: form.brandName, branch: form.branchName)
+        }
+        // The name may have been typed before this step showed (Back, then Next): suggest now.
+        .onAppear {
+            if form.brandId.isEmpty, !form.brandName.isEmpty { form.brandId = Slug.suggest(form.brandName) }
         }
     }
 
