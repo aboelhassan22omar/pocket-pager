@@ -1,0 +1,9 @@
+App name (default language Arabic): Pocket Pager: بيجر المطاعم
+Category: Business. Tags: Restaurant management, Point of sale, Food & drink
+Contact: WhatsApp 01043833456, website https://pager.aurexis.cc, privacy https://pager.aurexis.cc/privacy
+Countries: Egypt, Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman, Jordan (add more any time)
+Price: Free. Contains ads: No. In-app purchases: No.
+Content rating (IARC questionnaire): Utility / Business, no violence, no user-to-user chat, no gambling -> Everyone
+Target audience: 18+ (business owners). Not designed for children.
+Account deletion URL (required): https://pager.aurexis.cc/login -> «حسابي» -> «اقفل الحساب»
+App access for review: demo account phone 01099990001, password PocketReview1 (create it on the site after deploy)

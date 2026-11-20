@@ -1,0 +1,1 @@
+Guests scan, get a number, and their phone rings when the order is ready.
