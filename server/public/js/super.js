@@ -71,8 +71,19 @@ function showLogin() {
 
 // ---------- "محتاج منك" ----------
 
+const PAY_NAME = { instapay: 'InstaPay', wallet: 'محفظة', whatsapp: 'واتساب', call: 'لسه هيتفق' };
+
 function attentionItems() {
   const items = [];
+  // Owners' «اشترك»: confirm once the money is in, and their branches work at once.
+  for (const r of overview.billing ?? []) {
+    const who = [r.ownerName, r.phone && `0${String(r.phone).slice(2)}`].filter(Boolean).join(' · ');
+    items.push({
+      tone: 'alert',
+      text: `${r.brandName}: طلب اشتراك ${r.branches} ${r.branches === 1 ? 'فرع' : 'فروع'} × ${r.months} ${r.months === 1 ? 'شهر' : 'شهور'} = ${r.amount.toLocaleString('en-US')} ج.م (${PAY_NAME[r.method] ?? r.method}${r.reference ? ` · ${r.reference}` : ''})${who ? ` · ${who}` : ''}`,
+      act: 'bill', id: String(r.id), label: 'راجع',
+    });
+  }
   // The demo café's sample ratings and visitors' orders aren't anything to act on.
   for (const brand of liveBrands().filter((b) => !b.demo)) {
     if (!brand.owners.length) {
@@ -90,7 +101,7 @@ function attentionItems() {
       }
       const { status, daysLeft, reason } = b.plan;
       if (status === 'suspended') {
-        const why = reason === 'manual' ? 'إنت موقّفه' : reason === 'trial_ended' ? 'التجربة خلصت' : 'الدفع اتأخر';
+        const why = { manual: 'إنت موقّفه', trial_ended: 'التجربة خلصت', awaiting_payment: 'فرع جديد مستني الاشتراك' }[reason] ?? 'الدفع اتأخر';
         items.push({ tone: 'alert', text: `${b.name}: متوقف (${why})، والعملاء مش قادرين ياخدوا أرقام`,
           act: reason === 'manual' ? 'resume' : 'payment', id: b.id, label: reason === 'manual' ? 'شغّله' : 'سجّل دفعة' });
       } else if (status === 'past_due') {
@@ -966,6 +977,24 @@ function trashBrand(id) {
   });
 }
 
+/** An owner's subscription request: paid (every branch runs for its months) or cancelled. */
+function billingRequest(id) {
+  const r = (overview.billing ?? []).find((x) => x.id === id);
+  if (!r) return;
+  openForm({
+    title: `اشتراك ${r.brandName}`,
+    intro: `${r.branches} ${r.branches === 1 ? 'فرع' : 'فروع'} لمدة ${r.months} ${r.months === 1 ? 'شهر' : 'شهور'}: ${r.amount.toLocaleString('en-US')} ج.م. لما تأكد، كل فرع بياخد المدة دي بعد آخر يوم عنده.`,
+    fields: [{ name: 'cancel', type: 'toggle', label: 'الطلب اتلغى (مفيش فلوس وصلت)', value: false }],
+    submit: 'الفلوس وصلت، شغّل الفروع',
+    onSubmit: async (v) => {
+      const cancel = v.cancel === 'on';
+      await api(`/api/super/billing/${id}/${cancel ? 'cancel' : 'confirm'}`, { method: 'POST', body: {} });
+      toast(cancel ? 'الطلب اتلغى' : 'الاشتراك اتسجّل والفروع شغالة');
+      await refresh();
+    },
+  });
+}
+
 async function copyValue(value) {
   await navigator.clipboard?.writeText(value).catch(() => {});
   toast('اتنسخ');
@@ -988,6 +1017,7 @@ function onAction(el) {
   else if (act === 'branch') newBranch(id);
   else if (act === 'owner') ownerAccount(id);
   else if (act === 'backup') backupNow(el);
+  else if (act === 'bill') billingRequest(Number(id));
   else if (act === 'payment' || act === 'resume') {
     const b = findBranch(id);
     if (b) branchAction(act, b);

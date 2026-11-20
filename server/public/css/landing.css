@@ -157,3 +157,170 @@
   70% { opacity: 1; transform: scale(1.06); }
   100% { opacity: 1; transform: scale(1); }
 }
+
+/* ---------- for owners: start, how it works, prices ---------- */
+
+.landing-login {
+  position: absolute;
+  top: calc(16px + env(safe-area-inset-top));
+  inset-inline-end: var(--gutter);
+  padding: 8px 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--pp-radius-pill);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  text-decoration: none;
+}
+
+.landing-login:hover {
+  border-color: var(--accent);
+}
+
+.for-shops-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.how,
+.pricing {
+  width: min(100%, 40rem);
+  margin-top: clamp(40px, 8vh, 72px);
+}
+
+.how h2,
+.pricing h2 {
+  margin: 0 0 14px;
+  font-size: clamp(1.4rem, 4.5vw, 1.8rem);
+  font-weight: var(--pp-weight-bold);
+}
+
+.how-steps {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: how;
+}
+
+.how-steps li {
+  position: relative;
+  display: grid;
+  gap: 4px;
+  padding: 16px 0;
+  padding-inline-start: 52px;
+  border-top: 1px solid var(--line);
+  counter-increment: how;
+}
+
+.how-steps li::before {
+  content: counter(how);
+  position: absolute;
+  inset-inline-start: 0;
+  top: 16px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: var(--pp-gradient);
+  color: #fff;
+  font-weight: var(--pp-weight-bold);
+}
+
+.how-steps span,
+.pricing-lede {
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.pricing-lede {
+  margin: 0 0 18px;
+}
+
+.calc {
+  display: grid;
+  gap: 14px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--pp-radius-card);
+  background: var(--surface);
+}
+
+.calc-label {
+  font-weight: 600;
+}
+
+.calc-stepper {
+  display: flex;
+  gap: 8px;
+  max-width: 16rem;
+}
+
+.calc-btn {
+  width: 52px;
+  min-height: 52px;
+  padding: 0;
+  font-size: 1.4rem;
+}
+
+.calc-n {
+  flex: 1;
+  min-height: 52px;
+  text-align: center;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.calc-range {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.calc-out {
+  display: grid;
+  gap: 4px;
+}
+
+.calc-per {
+  color: var(--muted);
+}
+
+.calc-per strong {
+  color: var(--text);
+  font-size: clamp(2rem, 8vw, 2.75rem);
+  font-weight: var(--pp-weight-bold);
+}
+
+.calc-total {
+  font-weight: 600;
+}
+
+.calc-next {
+  color: var(--pp-amber);
+  font-size: var(--fs-sm);
+}
+
+.pricing-cta {
+  margin-top: 18px;
+}
+
+@media (max-width: 480px) {
+  .for-shops-actions {
+    width: 100%;
+  }
+
+  .for-shops-actions .btn {
+    flex: 1 1 100%;
+  }
+
+  .calc {
+    padding: 18px;
+  }
+
+  .pricing-cta {
+    width: 100%;
+  }
+}

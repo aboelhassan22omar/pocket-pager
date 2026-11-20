@@ -10,6 +10,8 @@ export const PLAN_LABEL = {
 };
 
 export function planText(plan) {
+  if (plan.reason === 'awaiting_payment') return 'مستني الاشتراك';
+  if (plan.reason === 'trial_ended') return 'التجربة خلصت';
   const label = PLAN_LABEL[plan.status] ?? plan.status;
   if (plan.daysLeft == null) return label;
   if (plan.status === 'past_due') return `${label}، بيتوقف بعد ${plan.daysLeft} يوم`;

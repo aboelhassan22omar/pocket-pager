@@ -7,6 +7,9 @@ import { filePickHtml, openForm } from './forms.js';
 import { icons } from './icons.js';
 import { TEXT_DEFAULTS, TEXT_GROUPS, TEXT_MAX } from './texts.js';
 import { toast } from './staff.js';
+import {
+  inStoreApp, openAddBranch, openDeleteAccount, openLinks, openPassword, planBannerHtml, renderBilling, renderTeam, welcomeHtml,
+} from './owner-plus.js';
 import { api, esc, isCashierApp, isIOS, reloadOnNewVersion, shopIdFromPath } from './util.js';
 
 const POLL_MS = 30_000;
@@ -20,8 +23,9 @@ function showLogin() {
   const root = $('login-root');
   root.innerHTML = `
     <form class="login login-account" novalidate>
-      <h1>دخول صاحب البراند</h1>
-      <input class="input" name="username" dir="ltr" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="اسم المستخدم" aria-label="اسم المستخدم" required>
+      <h1>دخول</h1>
+      <p class="muted small">لصاحب المطعم ومدير الفرع.</p>
+      <input class="input" name="username" dir="ltr" inputmode="tel" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="رقم الموبايل أو اسم المستخدم" aria-label="رقم الموبايل أو اسم المستخدم" required>
       <input class="input" name="password" type="password" autocomplete="current-password" placeholder="كلمة السر" aria-label="كلمة السر" required>
       <p class="form-error" hidden></p>
       <button class="btn btn-primary btn-block" type="submit">دخول</button>
@@ -33,9 +37,9 @@ function showLogin() {
       e.preventDefault();
       const error = form.querySelector('.form-error');
       try {
-        const res = await api('/api/brand/login', {
+        const res = await api('/api/login', {
           method: 'POST',
-          body: { username: form.elements.username.value.trim(), password: form.elements.password.value, brandId },
+          body: { login: form.elements.username.value.trim(), password: form.elements.password.value },
         });
         // An owner always lands on their own brand.
         if (res.brandId !== brandId) {
@@ -54,18 +58,26 @@ function showLogin() {
 
 // ---------- sections: a tab bar on phones, pills in the header on wider screens ----------
 
-const TABS = [
-  ['branches', 'الفروع', icons.store],
-  ['analytics', 'التحليلات', icons.chart],
-  ['apps', 'التطبيقات', icons.phone],
-  ['account', 'حسابي', icons.user],
-];
+// The owner gets the team and (a self-serve brand) the subscription; a branch manager doesn't.
+let TABS = [];
+function tabsFor(d) {
+  const owner = d.owner.role === 'owner';
+  return [
+    ['branches', owner ? 'الفروع' : 'فرعي', icons.store],
+    ['analytics', 'التحليلات', icons.chart],
+    ...(owner && !d.demo ? [['team', 'الفريق', icons.user]] : []),
+    ...(owner && d.brand.selfServe && !d.demo && !inStoreApp() ? [['billing', 'الاشتراك', icons.gift]] : []),
+    ['apps', 'التطبيقات', icons.phone],
+    ['account', 'حسابي', icons.settings],
+  ];
+}
 const TAB_KEY = `sp:owner-tab:${brandId}`;
 
 function renderTabs() {
   for (const nav of document.querySelectorAll('[data-tabs]')) {
     const pills = nav.classList.contains('nav');
-    nav.innerHTML = TABS.map(([id, label, icon]) => (pills
+    const tabs = !pills && TABS.length > 5 ? TABS.filter(([id]) => id !== 'apps') : TABS;
+    nav.innerHTML = tabs.map(([id, label, icon]) => (pills
       ? `<button class="nav-link" type="button" data-tab="${id}">${icon(18)}${label}</button>`
       : `<button type="button" data-tab="${id}"><span class="tab-icon">${icon(22)}</span>${label}</button>`)).join('');
     nav.addEventListener('click', (e) => {
@@ -91,6 +103,14 @@ function showTab(id, { scroll = false } = {}) {
     /* private mode */
   }
   if (scroll) window.scrollTo({ top: 0 });
+  loadPane(id);
+}
+
+/** The team and the subscription load when opened. */
+function loadPane(id) {
+  if (!data) return;
+  if (id === 'team') renderTeam($('team-body'), { base, branches: data.branches }).catch((err) => toast(err.message, 'error'));
+  if (id === 'billing') renderBilling($('billing-body'), { base, refresh }).catch((err) => toast(err.message, 'error'));
 }
 
 function firstTab() {
@@ -104,7 +124,7 @@ function firstTab() {
 }
 
 /** Today in every branch together, above the cards. */
-function todayHtml(branches) {
+function todayHtml(branches, { renewals = true } = {}) {
   const sum = (k) => branches.reduce((n, b) => n + (b[k] ?? 0), 0);
   const open = branches.filter((b) => b.screens > 0).length;
   const late = sum('lateToday');
@@ -113,7 +133,7 @@ function todayHtml(branches) {
     <div class="today-tile"><span>مفتوح دلوقتي</span><strong class="num">${sum('openNow')}</strong></div>
     <div class="today-tile"><span>متأخر</span><strong class="num ${late ? 'is-alert' : ''}">${late}</strong></div>
     <p class="today-note"><span class="dot" data-online="${open > 0}"></span>الكاشير مفتوح في ${open} من ${branches.length} ${branches.length === 1 ? 'فرع' : 'فروع'}</p>
-    ${renewalsDueHtml(branches)}`;
+    ${renewals ? renewalsDueHtml(branches) : ''}`;
 }
 
 /** Branches to renew within a week (or already late), soonest first. */
@@ -136,21 +156,30 @@ function render() {
   $('brand-name').textContent = data.brand.name;
   $('brand-name').title = data.brand.name;
   document.title = `فروعي — ${data.brand.name}`;
-  $('owner-line').textContent = data.demo ? 'نسخة الديمو: ده اللي صاحب المحل بيشوفه' : `داخل باسم ${data.owner.username}`;
+  const who = data.owner.name ?? data.owner.username;
+  $('owner-line').textContent = data.demo ? 'نسخة الديمو: ده اللي صاحب المحل بيشوفه'
+    : data.owner.role === 'manager' ? `${who} · مدير الفرع` : `داخل باسم ${who}`;
   const logo = data.branches.find((b) => b.logoUrl)?.logoUrl;
   $('brand-logo').innerHTML = logo ? `<img src="${esc(logo)}" alt="">` : esc(data.brand.name.slice(0, 1));
-  $('today').innerHTML = data.branches.length ? todayHtml(data.branches) : '';
+  const owner = data.owner.role === 'owner';
+  $('plan-banner').innerHTML = planBannerHtml(data);
+  $('welcome').innerHTML = welcomeHtml(data);
+  // One branch: its card already says it all.
+  $('today').innerHTML = data.branches.length > 1 ? todayHtml(data.branches, { renewals: !data.brand.selfServe }) : '';
+  $('branches-head').hidden = !owner || data.demo;
   renderAccount();
+  for (const id of ['h-ring', 'ring-body', 'h-texts', 'texts-body']) $(id).hidden = !owner;
   const now = Date.now();
   $('branches').innerHTML = data.branches.length
     ? `<div class="cards">${data.branches.map((b) => branchCardHtml(b, {
       now,
-      extra: renewalHtml(b.plan, b.lastPayment),
-      actions: `<button class="btn btn-sm" data-act="features" data-branch="${esc(b.id)}" type="button">الخصائص</button>
+      extra: data.brand.selfServe ? '' : renewalHtml(b.plan, b.lastPayment),
+      actions: `<button class="btn btn-sm btn-primary" data-act="links" data-branch="${esc(b.id)}" type="button">اللينكات والرقم السري</button>
+        <button class="btn btn-sm" data-act="features" data-branch="${esc(b.id)}" type="button">الخصائص</button>
         ${b.delivery ? `<button class="btn btn-sm" data-act="drivers" data-branch="${esc(b.id)}" type="button">المناديب</button>` : ''}
-        <button class="btn btn-sm" data-act="rename" data-branch="${esc(b.id)}" type="button">غيّر الاسم</button>`,
+        ${owner ? `<button class="btn btn-sm btn-quiet" data-act="rename" data-branch="${esc(b.id)}" type="button">غيّر الاسم</button>` : ''}`,
     })).join('')}</div>`
-    : '<p class="empty-note">لسه مفيش فروع. كلّم Aurexis عشان نضيفها.</p>';
+    : '<p class="empty-note">لسه مفيش فروع. دوس «ضيف فرع» فوق.</p>';
 }
 
 // ---------- what customers read, in the brand's own words ----------
@@ -393,19 +422,34 @@ function renderAccount() {
   // The demo signs visitors in by itself; editing or logging out would only strand them.
   $('account-body').innerHTML = `
     <dl class="account-card">
-      <div><dt>اسم المستخدم</dt><dd dir="ltr">${esc(o.username)}</dd></div>
+      ${o.name ? `<div><dt>الاسم</dt><dd>${esc(o.name)}</dd></div>` : ''}
+      <div><dt>${o.role === 'manager' ? 'بتدخل بـ' : 'اسم المستخدم'}</dt><dd dir="ltr">${esc(o.username)}</dd></div>
+      <div><dt>الصلاحية</dt><dd>${o.role === 'manager' ? 'مدير فرع' : 'صاحب المطعم'}</dd></div>
       <div><dt>الإيميل</dt><dd dir="ltr">${o.email ? esc(o.email) : notSet}</dd></div>
       <div><dt>التليفون</dt><dd dir="ltr">${o.phone ? esc(o.phone) : notSet}</dd></div>
     </dl>
+    <a class="btn btn-block d-md-none apps-link" href="#apps" data-tab-link="apps">${icons.phone(20)}التطبيقات: تطبيق الكاشير وتطبيقك</a>
     <p class="muted small">الإيميل والتليفون اختياريين. بنستخدمهم عشان نكلمك لو فيه حاجة تخص الفروع أو الاشتراك.</p>
     ${data.demo ? '' : `
     <div class="account-actions">
       <button class="btn btn-primary" data-act="contact" type="button">عدّل الإيميل والتليفون</button>
+      <button class="btn" data-act="password" type="button">غيّر كلمة السر</button>
       <button class="btn btn-quiet" data-act="logout" type="button">${icons.logout(20)}خروج</button>
-    </div>`}`;
+    </div>
+    ${o.role === 'owner' ? `<details class="danger-zone"><summary>اقفل الحساب</summary>
+      <p class="muted small">بيوقّف المطعم وكل فروعه. استخدمه بس لو مش عايز تكمّل.</p>
+      <button class="btn btn-danger" data-act="delete" type="button">اقفل حسابي</button></details>` : ''}`}`;
 }
 
 function accountAction(act) {
+  if (act === 'password') {
+    openPassword({ base });
+    return;
+  }
+  if (act === 'delete') {
+    openDeleteAccount({ base });
+    return;
+  }
   if (act === 'logout') {
     api(`${base}/logout`, { method: 'POST' }).finally(() => location.reload());
     return;
@@ -542,62 +586,69 @@ function featureToggle(b, feature, label, hint) {
   return { name: `ff_${feature}`, type: 'toggle', label, hint: forced ? FORCED_HINT : hint, value: b.toggles[feature], disabled: forced };
 }
 
-/** Extra fields per feature, filled in by the loyalty and promo phases. */
+/**
+ * The branch's features, in the order owners need them, each with what it does, who sees it and
+ * what to type. Delivery and the takeaway box are on for a new branch.
+ */
 function featureFields(b) {
-  const reviewHint = `خاص بفرع ${b.name} بس، ومن هنا بس بيتحط. من Google Business Profile بتاع الفرع ← اطلب تقييمات ← انسخ اللينك`;
+  const reviewHint = `لينك فرع ${b.name} بس. هتلاقيه في Google Business Profile بتاع الفرع ← «اطلب تقييمات» ← انسخ اللينك والصقه هنا`;
   return [
-    { type: 'heading', label: 'التقييم' },
-    featureToggle(b, 'review', 'تقييم جوجل بعد الاستلام', 'زرار بيفتح للعميل خانة النجوم بتاعة جوجل على طول، لكل العملاء'),
+    { type: 'heading', label: 'التوصيل', hint: 'لو عندك مناديب بتوصّل الطلبات. العميل بيتابع طلبه لحد ما يوصله، وموبايله بيرن لما الطلب يخرج.' },
+    {
+      name: 'delivery', type: 'toggle', label: 'توصيل بمناديب المحل',
+      hint: 'الكاشير بيكتب موبايل العميل، والعميل بيوصله لينك المتابعة على واتساب. لما الطلب يخرج الكاشير يختار المندوب', value: b.delivery,
+    },
+    {
+      name: 'deliveryCloseMinutes', label: 'الطلب يتقفل لوحده بعد كام دقيقة من خروجه', type: 'number', inputmode: 'numeric', dir: 'ltr',
+      value: b.deliveryCloseMinutes ?? 60, hint: 'اكتب رقم من 15 لـ 240. لو المندوب وصل بدري، الكاشير يدوس «وصل»',
+    },
+
+    { type: 'heading', label: 'رقم فاتورة التيكاواي', hint: 'لو سيستم الكاشير بتاعك بيدّي كل الطلبات أرقام ورا بعض، وإنت عايز التيكاواي ياخد رقم من عدّ البيجر.' },
+    {
+      name: 'manualNumbers', type: 'toggle', label: 'خانة «رقم الفاتورة» فوق شاشة الكاشير',
+      hint: 'الكاشير يكتب رقم الفاتورة (مثلًا 27) فتاخد الرقم الجاي (مثلًا 3). أول عميل يمسح الكود بعدها بياخد الرقم ده على طول', value: b.manualNumbers,
+    },
+
+    { type: 'heading', label: 'بطاقة الختم', hint: 'بتخلّي العميل يرجعلك: ختم مع كل طلب، وهدية لما يكمّل الختمات. من غير كارت ورق.' },
+    featureToggle(b, 'loyalty', 'شغّل بطاقة الختم', 'العميل بياخد ختم لما يستلم طلبه، وبيشوف كام فاضل على الهدية'),
+    { name: 'loyaltyEvery', label: 'الهدية بعد كام ختم؟', type: 'number', inputmode: 'numeric', dir: 'ltr', value: b.loyaltyEvery, hint: 'رقم من 2 لـ 20. مثلًا 5 يعني الطلب السادس هدية' },
+    { name: 'loyaltyRewardText', label: 'الهدية إيه؟', value: b.loyaltyRewardText, placeholder: 'مثلًا: مشروب ببلاش', maxlength: 60, hint: 'الكلام ده العميل بيشوفه بالظبط' },
+    {
+      name: 'loyaltyProduct', label: 'الختم على منتج واحد بس؟ (اختياري)', value: b.loyaltyProduct ?? '', placeholder: 'مثلًا: لاتيه', maxlength: 40,
+      hint: 'سيبها فاضية والختم يبقى مع أي طلب. لو كتبت منتج، الكاشير بيتسأل وهو بيسلّم «الطلب فيه المنتج ده؟»',
+    },
+
+    { type: 'heading', label: 'عرض وهو مستني', hint: 'إعلان صغير تحت رقم الطلب، بيظهر بس وهو مستني. مكان كويس لمنتج جديد.' },
+    featureToggle(b, 'promo', 'شغّل العرض', 'بيختفي لوحده أول ما الطلب يجهز'),
+    { name: 'promoText', label: 'كلام العرض', type: 'textarea', value: b.promoText, maxlength: 120, placeholder: 'مثلًا: جرّب الكرواسون الجديد' },
+    {
+      name: 'promoImage', label: 'صورة العرض (اختياري)', type: 'file', accept: 'image/png,image/jpeg,image/webp',
+      hint: b.promoImageUrl ? 'فيه صورة دلوقتي. اختار صورة تانية عشان تغيّرها' : 'صورة PNG أو JPG، أقل من 500 كيلوبايت',
+    },
+    ...(b.promoImageUrl ? [{ name: 'promoImageRemove', type: 'toggle', label: 'شيل الصورة', value: false }] : []),
+    { name: 'promoStartsAt', label: 'يبدأ من يوم (اختياري)', type: 'date', dir: 'ltr', value: b.promoStartsAt ?? '' },
+    { name: 'promoEndsAt', label: 'لحد يوم (اختياري)', type: 'date', dir: 'ltr', value: b.promoEndsAt ?? '' },
+
+    { type: 'heading', label: 'رأي العميل', hint: 'بعد ما العميل يستلم، تعرف رأيه وتزوّد تقييماتك على جوجل.' },
+    featureToggle(b, 'review', 'زرار «قيّمنا على جوجل»', 'بيظهر للعميل بعد الاستلام ويفتح النجوم بتاعة جوجل على طول'),
     {
       name: 'googlePlaceId', label: 'لينك تقييم جوجل للفرع ده', dir: 'ltr', value: b.legacyReviewUrl ?? b.googlePlaceId ?? '',
       placeholder: 'https://g.page/r/…/review', hint: reviewHint,
     },
-    { type: 'heading', label: 'رسالة للإدارة' },
     {
-      name: 'messageBox', type: 'toggle', label: 'خانة «رسالة للإدارة» تحت صفحة الطلب',
-      hint: 'العميل يقدر يكتب شكوى أو اقتراح، والرسايل بتوصلك في التحليلات. رسالة واحدة لكل طلب', value: b.messageBox,
+      name: 'messageBox', type: 'toggle', label: 'خانة «رسالة للإدارة»',
+      hint: 'العميل يقدر يكتبلك شكوى أو اقتراح من غير ما الكاشير يشوفها. بتوصلك في «التحليلات»', value: b.messageBox,
     },
-    { type: 'heading', label: 'بطاقة الختم' },
-    featureToggle(b, 'loyalty', 'بطاقة ختم للعملاء', 'العميل بياخد ختم لما يستلم، وهدية كل كام ختم'),
-    { name: 'loyaltyEvery', label: 'الهدية كل كام ختم', type: 'number', inputmode: 'numeric', dir: 'ltr', value: b.loyaltyEvery, hint: 'من 2 لـ 20' },
-    { name: 'loyaltyRewardText', label: 'الهدية', value: b.loyaltyRewardText, placeholder: 'مثلًا: مشروب ببلاش', maxlength: 60 },
+
+    { type: 'heading', label: 'متقدم', hint: 'سيبها زي ما هي لو مش متأكد.' },
     {
-      name: 'loyaltyProduct', label: 'الختم على منتج واحد (اختياري)', value: b.loyaltyProduct ?? '', placeholder: 'مثلًا: لاتيه', maxlength: 40,
-      hint: 'سيبه فاضي = ختم مع كل طلب. لو كتبت منتج، الكاشير بيتسأل وهو بيسلّم «الطلب فيه المنتج ده؟» والعميل بياخد الختم بس لو أيوه. كده بتزوّد مبيعات المنتج ده',
-    },
-    { type: 'heading', label: 'كود لكل طلب' },
-    {
-      name: 'orderQr', type: 'toggle', label: 'شاشة العميل بتعرض كود الطلب',
-      hint: 'أول ما الكاشير يضرب الطلب (من السيستم أو زرار «طلب جديد»)، شاشة العميل بتعرض كود الطلب ده بس. أي حد يمسحه بيتابع نفس الطلب', value: b.orderQr,
+      name: 'orderQr', type: 'toggle', label: 'كود مختلف لكل طلب',
+      hint: 'بدل كود واحد للكل: أول ما الكاشير يعمل الطلب، شاشة العميل بتعرض كود الطلب ده بس. مفيد لو السيستم مربوط', value: b.orderQr,
     },
     {
       name: 'orderShare', type: 'toggle', label: 'أكتر من موبايل على نفس الطلب',
-      hint: 'كل اللي مسحوا الكود يتابعوا الطلب وموبايلاتهم كلها ترن. لو اتقفلت، أول موبايل بس', value: b.orderShare,
+      hint: 'لو مجموعة أصحاب، كلهم يمسحوا نفس الكود وموبايلاتهم كلها ترن', value: b.orderShare,
     },
-    { type: 'heading', label: 'التوصيل' },
-    {
-      name: 'delivery', type: 'toggle', label: 'توصيل بمناديب المحل',
-      hint: 'الكاشير يعمل «طلب توصيل» برقم موبايل العميل ويبعتله لينك المتابعة على واتساب. لما الطلب يخرج يختار المندوب، والعميل يشوفه «في الطريق» ويقدر يكلّمه', value: b.delivery,
-    },
-    {
-      name: 'deliveryCloseMinutes', label: 'الطلب يتقفل لوحده بعد كام دقيقة من خروجه', type: 'number', inputmode: 'numeric', dir: 'ltr',
-      value: b.deliveryCloseMinutes ?? 60, hint: 'من 15 لـ 240. الكاشير يقدر يدوس «وصل» قبلها',
-    },
-    { type: 'heading', label: 'أرقام التيكاواي' },
-    {
-      name: 'manualNumbers', type: 'toggle', label: 'الكاشير يكتب رقم الفاتورة',
-      hint: 'كل حاجة شغالة عادي. في التيكاواي الكاشير يكتب رقم الفاتورة (مثلًا 27)، فتاخد الرقم الجاي من العدّ (مثلًا 3). أول عميل يعمل سكان بعدها بيدخل على رقمه على طول، ويشوف رقم الفاتورة تحته وقدامه كام واحد', value: b.manualNumbers,
-    },
-    { type: 'heading', label: 'عرض وقت الانتظار' },
-    featureToggle(b, 'promo', 'عرض تحت رقم الطلب', 'بيظهر بس وهو مستني طلبه'),
-    { name: 'promoText', label: 'نص العرض', type: 'textarea', value: b.promoText, maxlength: 120, placeholder: 'مثلًا: جرّب الكرواسون الجديد' },
-    {
-      name: 'promoImage', label: 'صورة العرض', type: 'file', accept: 'image/png,image/jpeg,image/webp',
-      hint: b.promoImageUrl ? 'فيه صورة دلوقتي. اختار صورة تانية عشان تغيّرها' : 'PNG أو JPG أو WEBP، أقل من 500 كيلوبايت',
-    },
-    ...(b.promoImageUrl ? [{ name: 'promoImageRemove', type: 'toggle', label: 'شيل الصورة', value: false }] : []),
-    { name: 'promoStartsAt', label: 'يبدأ من (اختياري)', type: 'date', dir: 'ltr', value: b.promoStartsAt ?? '' },
-    { name: 'promoEndsAt', label: 'لحد (اختياري)', type: 'date', dir: 'ltr', value: b.promoEndsAt ?? '' },
   ];
 }
 
@@ -704,7 +755,7 @@ async function openDrivers(b) {
 function openFeatures(b) {
   openForm({
     title: `خصائص ${b.name}`,
-    intro: 'كل خاصية تقدر تشغلها أو تقفلها في أي وقت، والبيانات بتفضل محفوظة.',
+    intro: 'شغّل اللي محتاجه بس. تقدر تقفل أي حاجة في أي وقت، ومفيش بيانات بتضيع.',
     fields: featureFields(b),
     onSubmit: async (v) => {
       const branchBase = `${base}/branches/${encodeURIComponent(b.id)}`;
@@ -745,6 +796,7 @@ async function boot() {
   $('app').hidden = false;
   watchAppUpdates();
   document.body.classList.add('has-tabbar');
+  TABS = tabsFor(data);
   renderTabs();
   showTab(firstTab());
   addEventListener('hashchange', () => showTab(location.hash.slice(1)));
@@ -764,13 +816,37 @@ async function boot() {
     if (e.target.closest('[data-act="ring"]')) openRing();
   });
   $('account-body').addEventListener('click', (e) => {
+    const tab = e.target.closest('[data-tab-link]');
+    if (tab) {
+      e.preventDefault();
+      showTab(tab.dataset.tabLink, { scroll: true });
+      return;
+    }
     const el = e.target.closest('[data-act]');
     if (el) accountAction(el.dataset.act);
   });
+  // Links in banners and the first steps: «اشترك», copy a link.
+  $('pane-branches').addEventListener('click', (e) => {
+    const tab = e.target.closest('[data-tab-link]');
+    if (tab) {
+      e.preventDefault();
+      showTab(tab.dataset.tabLink, { scroll: true });
+      return;
+    }
+    const copyEl = e.target.closest('[data-copy-text]');
+    if (copyEl) navigator.clipboard?.writeText(copyEl.dataset.copyText).then(() => toast('اللينك اتنسخ'), () => {});
+  });
+  $('add-branch').addEventListener('click', () => openAddBranch({
+    base, brandId, host: location.host, refresh, goBilling: data.brand.selfServe,
+  }));
   $('branches').addEventListener('click', (e) => {
     const el = e.target.closest('[data-act]');
     if (!el) return;
     const branch = data.branches.find((b) => b.id === el.dataset.branch);
+    if (el.dataset.act === 'links') {
+      openLinks(branch, { base, refresh });
+      return;
+    }
     if (el.dataset.act === 'features') {
       openFeatures(branch);
       return;

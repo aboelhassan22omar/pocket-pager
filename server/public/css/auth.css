@@ -1,0 +1,580 @@
+/* Sign-up and login (/signup, /login): Pocket Pager's own pages, navy ground, one orange action
+   per screen. Every question carries a one-line hint under it (what, what to type, why). On wide
+   screens the customer's phone sits beside the form and fills in as the owner types. */
+
+.auth {
+  min-height: 100dvh;
+  background:
+    radial-gradient(44rem 28rem at 85% -8rem, rgb(255 106 19 / 0.13), transparent 70%),
+    var(--bg);
+}
+
+::selection {
+  background: rgb(255 106 19 / 0.35);
+  color: var(--text);
+}
+
+.auth-top {
+  padding: calc(14px + env(safe-area-inset-top)) 0 14px;
+}
+
+.auth-home img {
+  display: block;
+  height: 30px;
+  width: auto;
+}
+
+.auth-switch {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  text-decoration: none;
+}
+
+.auth-switch strong {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.auth-switch:hover strong {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.auth-main {
+  padding-top: clamp(8px, 3vw, 32px);
+  padding-bottom: 48px;
+}
+
+/* ---------- the three steps ---------- */
+
+.steps {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+}
+
+.steps li {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 3px solid var(--line-strong);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  transition: border-color 240ms var(--ease), color 240ms var(--ease);
+}
+
+.steps-dot {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+
+.steps li.is-now,
+.steps li.is-done {
+  border-top-color: var(--accent);
+  color: var(--text);
+}
+
+.steps li.is-now .steps-dot,
+.steps li.is-done .steps-dot {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* ---------- the card ---------- */
+
+.auth-card {
+  padding: clamp(20px, 4vw, 36px);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--surface);
+  box-shadow: 0 24px 60px -30px rgb(0 0 0 / 0.6);
+}
+
+.auth-card h1 {
+  margin: 0 0 6px;
+  font-size: clamp(1.45rem, 4.6vw, 1.95rem);
+  font-weight: 700;
+  line-height: 1.3;
+  text-wrap: balance;
+}
+
+.lede {
+  margin: 0 0 24px;
+  color: var(--muted);
+  line-height: 1.7;
+  text-wrap: pretty;
+}
+
+.lede strong {
+  color: var(--text);
+}
+
+.step {
+  animation: step-in 360ms var(--ease) both;
+}
+
+@keyframes step-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* One question: the label, the box, and a short line on what and why. */
+.q {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 22px;
+}
+
+.q label {
+  font-weight: 600;
+}
+
+.optional {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+}
+
+.auth .input {
+  min-height: 52px;
+  font-size: var(--fs-md);
+  caret-color: var(--accent);
+}
+
+.auth .input::placeholder {
+  color: rgb(154 164 184 / 0.75);
+}
+
+.auth .input:focus-visible {
+  border-color: var(--accent);
+  outline: 1px solid var(--accent);
+}
+
+.input-with {
+  position: relative;
+}
+
+.input-with .input {
+  padding-inline-start: 52px;
+}
+
+.input-eye {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 2px;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+}
+
+.input-eye:hover,
+.input-eye[aria-pressed='true'] {
+  color: var(--text);
+}
+
+/* The link: the host is printed, the owner types the last part. */
+.slug {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-control);
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.slug:focus-within {
+  border-color: var(--accent);
+  outline: 1px solid var(--accent);
+}
+
+.auth .slug-input:focus-visible {
+  outline: none;
+}
+
+.slug-host {
+  display: flex;
+  align-items: center;
+  padding: 0 4px 0 14px;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+
+.auth .slug-input {
+  min-width: 0;
+  padding-inline: 2px 14px;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.slug-state {
+  min-height: 1.4em;
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+.slug-state.is-ok {
+  color: var(--pp-ready);
+}
+
+.slug-state.is-bad {
+  color: #ff8a7a;
+}
+
+.link-preview {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 20px;
+  padding: 14px 16px;
+  border-radius: var(--r-control);
+  background: var(--bg);
+}
+
+.link-preview-label {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.link-preview code {
+  color: var(--pp-amber);
+  font-family: var(--font);
+  font-size: var(--fs-md);
+  word-break: break-all;
+}
+
+.trial-note {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin: 0 0 8px;
+  padding: 14px 16px;
+  border-radius: var(--r-control);
+  background: rgb(255 106 19 / 0.09);
+  line-height: 1.6;
+}
+
+.trial-note-icon {
+  color: var(--accent);
+  margin-top: 2px;
+}
+
+.form-error {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border-radius: var(--r-control);
+  background: rgb(240 69 58 / 0.12);
+  color: #ffb4aa;
+}
+
+.step-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.btn-go {
+  min-height: 54px;
+  min-width: 160px;
+  margin-inline-start: auto;
+  font-size: 1.06rem;
+  box-shadow: 0 10px 22px -12px rgb(0 0 0 / 0.7);
+}
+
+.btn-go:hover {
+  filter: brightness(1.06);
+}
+
+.btn:focus-visible,
+.input-eye:focus-visible,
+.auth a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* ---------- mobile: the preview as one line under the name ---------- */
+
+.preview-mini {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-control);
+}
+
+.preview-mini small {
+  display: block;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.preview-mini-tile,
+.phone-tile {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--pp-gradient);
+  color: #fff;
+  font-weight: 700;
+}
+
+/* ---------- wide screens: the customer's phone ---------- */
+
+.preview {
+  position: sticky;
+  top: 24px;
+  padding-top: 44px;
+}
+
+.preview-caption {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  text-align: center;
+}
+
+.phone {
+  width: min(100%, 300px);
+  margin-inline: auto;
+  padding: 12px;
+  border-radius: 44px;
+  background: linear-gradient(160deg, #1d2742, #0a0f1d);
+  box-shadow:
+    0 40px 80px -40px rgb(0 0 0 / 0.9),
+    inset 0 0 0 1px rgb(201 209 227 / 0.12);
+}
+
+.phone-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-height: 460px;
+  padding: 34px 20px 28px;
+  border-radius: 34px;
+  background:
+    radial-gradient(18rem 12rem at 50% 0, rgb(255 106 19 / 0.14), transparent 70%),
+    var(--pp-navy);
+  text-align: center;
+}
+
+.phone-brand {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  margin-bottom: 28px;
+}
+
+.phone-brand .phone-tile {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  font-size: 1.3rem;
+}
+
+.phone-brand strong {
+  max-width: 220px;
+  font-size: 1.05rem;
+  overflow-wrap: anywhere;
+}
+
+.phone-brand small,
+.phone-label,
+.phone-note {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.phone-number {
+  font-size: 5.5rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.phone-status {
+  margin-top: 8px;
+  font-weight: 600;
+}
+
+.phone-bar {
+  width: 70%;
+  height: 6px;
+  margin: 10px 0 18px;
+  border-radius: 99px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.phone-bar span {
+  display: block;
+  width: 45%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  animation: bar-run 2.6s var(--ease) infinite alternate;
+}
+
+@keyframes bar-run {
+  to {
+    width: 80%;
+  }
+}
+
+/* ---------- done ---------- */
+
+.done-head {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.done-mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  background: var(--pp-gradient);
+  color: #fff;
+}
+
+.done-mark .icon {
+  width: 28px;
+  height: 28px;
+}
+
+.pin-card {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+  margin: 4px 0 24px;
+  padding: 18px 20px;
+  border-radius: var(--r-control);
+  background: var(--bg);
+}
+
+.pin-label {
+  font-weight: 600;
+}
+
+.pin {
+  font-size: 2.6rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--pp-amber);
+}
+
+.todo {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 24px;
+  padding: 0;
+  list-style: none;
+  counter-reset: todo;
+}
+
+.todo li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 14px;
+  padding: 16px 0;
+  border-top: 1px solid var(--line);
+  counter-increment: todo;
+}
+
+.todo li::before {
+  content: counter(todo);
+  grid-row: span 2;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+  font-weight: 600;
+  font-size: var(--fs-sm);
+}
+
+.todo-text {
+  display: grid;
+  gap: 4px;
+}
+
+.todo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* ---------- login ---------- */
+
+.auth-narrow {
+  max-width: 30rem;
+  margin-inline: auto;
+}
+
+.auth-links {
+  display: grid;
+  gap: 10px;
+  margin-top: 20px;
+  text-align: center;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+.auth-links a {
+  color: var(--accent);
+}
+
+@media (max-width: 575.98px) {
+  .auth-card {
+    border-radius: 18px;
+  }
+
+  .step-actions .btn-go {
+    flex: 1;
+  }
+
+  .slug-host {
+    padding-inline-start: 10px;
+    font-size: var(--fs-xs);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .step,
+  .phone-bar span {
+    animation: none;
+  }
+}

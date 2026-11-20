@@ -35,9 +35,24 @@
 
     <main class="container-xl owner-main">
       <section class="owner-pane" id="pane-branches" data-pane="branches" aria-labelledby="h-branches">
-        <h2 class="visually-hidden" id="h-branches">الفروع</h2>
+        <div id="plan-banner"></div>
+        <div id="welcome"></div>
+        <div class="dash-head" id="branches-head" hidden>
+          <h2 id="h-branches">فروعك</h2>
+          <div class="actions"><button class="btn btn-primary btn-sm" id="add-branch" type="button">ضيف فرع</button></div>
+        </div>
         <div id="today" class="today" aria-label="النهارده في كل الفروع"></div>
         <div id="branches"></div>
+      </section>
+
+      <section class="owner-pane" data-pane="team" aria-labelledby="h-team" hidden>
+        <div class="dash-head"><h2 id="h-team">مديرين الفروع</h2></div>
+        <div id="team-body" class="stack-lg"></div>
+      </section>
+
+      <section class="owner-pane" data-pane="billing" aria-labelledby="h-billing" hidden>
+        <div class="dash-head"><h2 id="h-billing">الاشتراك</h2></div>
+        <div id="billing-body" class="stack-lg"></div>
       </section>
 
       <section class="owner-pane analytics" id="analytics" data-pane="analytics" aria-label="التحليلات" hidden></section>

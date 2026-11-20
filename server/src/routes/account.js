@@ -114,6 +114,14 @@ export default async function accountRoutes(app, deps) {
     throw new HttpError(429, 'محاولات كتير. استنى شوية وجرّب تاني');
   };
 
+  // What the sign-up and login pages say: the trial length and where to ask for help.
+  app.get('/api/signup/info', async () => ({
+    signup: config.signup,
+    trialDays: config.trialDays,
+    support: config.pay.whatsapp || null,
+    host: config.publicUrl.replace(/^https?:\/\//, ''),
+  }));
+
   // Is this link name free? ?brand=<slug>[&branch=<slug>]
   app.get('/api/signup/check', async (req, reply) => {
     limited(checkLimiter, `check|${req.ip}`, reply);

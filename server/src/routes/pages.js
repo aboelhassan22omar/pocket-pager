@@ -15,6 +15,12 @@ export default async function pageRoutes(app, { config }) {
     app.get(`/${prefix}/:shop`, (_req, reply) => sendHtml(reply, html));
   }
 
+  // Self-serve: sign up, sign in (owners and branch managers).
+  for (const name of ['signup', 'login']) {
+    const page = read(`${name}.html`);
+    app.get(`/${name}`, (_req, reply) => sendHtml(reply, page));
+  }
+
   const superPage = read('super.html');
   app.get('/super', (_req, reply) => sendHtml(reply, superPage));
   const brandPage = read('brand.html');
