@@ -43,7 +43,7 @@ describe('self-serve sign-up, login, trial once, managers, billing', () => {
   let server;
   let su;
   before(async () => {
-    server = await startServer({ SUPER_PASSWORD_HASH: await hashPin(SUPER_PASSWORD), PAY_INSTAPAY: 'pocket@instapay' });
+    server = await startServer({ SUPER_PASSWORD_HASH: await hashPin(SUPER_PASSWORD), PAY_INSTAPAY: 'pocket@instapay', PAY_WALLET: 'off' });
     su = client(server.url);
     await su.post('/api/super/login', { password: SUPER_PASSWORD });
   });
@@ -51,6 +51,11 @@ describe('self-serve sign-up, login, trial once, managers, billing', () => {
 
   let owner;
   let pin;
+  test('help on WhatsApp in international form, for wa.me', async () => {
+    const info = (await client(server.url).get('/api/signup/info')).data;
+    assert.equal(info.support, '201043833456');
+  });
+
   test('sign-up makes the brand, the first branch on a 3-day trial, and signs the owner in', async () => {
     owner = client(server.url);
     assert.deepEqual((await owner.get('/api/signup/check?brand=cafe-z')).data.brand.ok, true);
@@ -160,7 +165,7 @@ describe('self-serve sign-up, login, trial once, managers, billing', () => {
   test('«اشترك» asks for every branch × months; the super confirms and the branches work', async () => {
     const bill = await owner.get('/api/brand/cafe-z/billing');
     assert.equal(bill.data.branches.length, 2);
-    assert.deepEqual(bill.data.methods, [{ id: 'instapay', value: 'pocket@instapay' }]);
+    assert.deepEqual(bill.data.methods, [{ id: 'instapay', value: 'pocket@instapay' }, { id: 'whatsapp', value: '01043833456' }]);
     const q3 = bill.data.quotes.find((q) => q.months === 3);
     assert.equal(q3.total, 2 * 2300 * 3);
 
