@@ -1,4 +1,5 @@
 import SafariServices
+import StoreKit
 import SwiftUI
 import WebKit
 
@@ -11,6 +12,7 @@ struct DashboardView: View {
     @State private var reloadToken = 0
     @State private var external: URL?
     @State private var confirmSignOut = false
+    @Environment(\.requestReview) private var requestReview
 
     var body: some View {
         VStack(spacing: 0) {
@@ -38,6 +40,17 @@ struct DashboardView: View {
         .background(Theme.background.ignoresSafeArea())
         .sheet(item: $external) { url in
             SafariSheet(url: url).ignoresSafeArea()
+        }
+        // Ratings carry the app up the store: asked on the 3rd and the 15th time the owner comes back
+        // (someone who keeps using it), a few seconds in, never on the first visit. iOS decides
+        // whether to show it, at most three times a year.
+        .task {
+            let key = "pp.business.opens"
+            let opens = UserDefaults.standard.integer(forKey: key) + 1
+            UserDefaults.standard.set(opens, forKey: key)
+            guard opens == 3 || opens == 15 else { return }
+            try? await Task.sleep(nanoseconds: 6_000_000_000)
+            requestReview()
         }
         .confirmationDialog("تخرج من الحساب؟", isPresented: $confirmSignOut, titleVisibility: .visible) {
             Button("خروج", role: .destructive) { Task { await account.signOut() } }

@@ -20,7 +20,7 @@ const SETTING_COLUMNS = new Set([
   'google_place_id', 'loyalty_every', 'loyalty_reward_text', 'loyalty_product',
   'promo_text', 'promo_image', 'promo_starts_at', 'promo_ends_at',
   'pos_token', 'pos_last_event', 'theme_version', 'pos_only', 'order_qr', 'order_share',
-  'manual_numbers', 'print_agent', 'print_last', 'message_box', 'delivery', 'delivery_close_minutes',
+  'manual_numbers', 'print_agent', 'print_last', 'message_box', 'delivery', 'delivery_close_minutes', 'paused',
 ]);
 export const FEEDBACK_WINDOW_MS = 48 * 3600 * 1000;
 // Closed orders hold no personal data and feed analytics for 90 days; push subscriptions
@@ -514,6 +514,31 @@ export class BranchStore {
   }
 
   // ---- drivers (this branch's own) ----
+
+  // ---- cashiers with their own PIN ----
+
+  listStaff() {
+    return this.db.prepare('SELECT * FROM staff WHERE deleted_at IS NULL ORDER BY id').all();
+  }
+
+  getStaff(id) {
+    return this.db.prepare('SELECT * FROM staff WHERE id = ? AND deleted_at IS NULL').get(id);
+  }
+
+  addStaff({ name, pinHash, pinSealed = null }) {
+    const res = this.db.prepare('INSERT INTO staff (name, pin_hash, pin_sealed, created_at) VALUES (?, ?, ?, ?)')
+      .run(name, pinHash, pinSealed, Date.now());
+    return this.getStaff(Number(res.lastInsertRowid));
+  }
+
+  setStaffPin(id, { pinHash, pinSealed = null }) {
+    this.db.prepare('UPDATE staff SET pin_hash = ?, pin_sealed = ? WHERE id = ?').run(pinHash, pinSealed, id);
+    return this.getStaff(id);
+  }
+
+  deleteStaff(id) {
+    this.db.prepare('UPDATE staff SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL').run(Date.now(), id);
+  }
 
   listDrivers() {
     return this.sql.drivers.all();

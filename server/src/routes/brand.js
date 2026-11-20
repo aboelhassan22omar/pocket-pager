@@ -25,7 +25,7 @@ import {
   accountPhone, checkNewPassword, cleanPersonName, cleanSlug, newPin, phoneTaken,
 } from './account.js';
 import { parsePlaceId } from '../upgrades.js';
-import { parseGoogleReviewUrl, sniffImage } from './bar.js';
+import { MAX_STAFF, parseGoogleReviewUrl, sniffImage } from './bar.js';
 import { cleanBranchName } from './super.js';
 
 const PROMO_TEXT_MAX = 120;
@@ -75,6 +75,8 @@ export function ownerExtraFields(body) {
   if ('messageBox' in body) fields.message_box = body.messageBox === true ? 1 : 0;
   // Delivery by the branch's own drivers, and how long an order on its way stays open.
   if ('delivery' in body) fields.delivery = body.delivery === true ? 1 : 0;
+  // Paused: customers can't take a number and the cashier can't start an order until it opens.
+  if ('paused' in body) fields.paused = body.paused === true ? 1 : 0;
   if ('deliveryCloseMinutes' in body) {
     const minutes = Number(body.deliveryCloseMinutes);
     const { min, max } = DELIVERY_CLOSE_MINUTES;
@@ -541,6 +543,86 @@ export default async function brandRoutes(app, deps) {
       });
       control.audit({ actor: `owner:${req.owner.id}`, action: 'billing.request', brandId, detail: { id: request.id, months, amount: q.total, method }, ip: req.ip });
       return reply.code(201).send(billingView(brandId));
+    });
+
+    // ---- messages to the cashier screens (owner only) ----
+
+    const ANNOUNCE_MAX = 280;
+    b.get('/announcements', async (req) => {
+      ownerOnly(req);
+      return { announcements: control.announcementsOfBrand(req.params.brand) };
+    });
+
+    b.post('/announcements', async (req, reply) => {
+      ownerOnly(req);
+      const brandId = req.params.brand;
+      const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
+      if (!text || text.length > ANNOUNCE_MAX) throw new HttpError(400, `اكتب الرسالة (لحد ${ANNOUNCE_MAX} حرف)`, { field: 'text' });
+      const live = control.branchesOfBrand(brandId).filter((br) => !br.deleted_at).map((br) => br.id);
+      let branchIds = Array.isArray(req.body?.branchIds) ? req.body.branchIds.filter((id) => live.includes(id)) : null;
+      if (branchIds && !branchIds.length) throw new HttpError(400, 'اختار فرع واحد على الأقل', { field: 'branchIds' });
+      if (branchIds && branchIds.length === live.length) branchIds = null;
+      const days = [1, 3, 7].includes(Number(req.body?.days)) ? Number(req.body.days) : 3;
+      const id = control.createAnnouncement({ brandId, text, branchIds, days, actor: `owner:${req.owner.id}` });
+      for (const branchId of branchIds ?? live) {
+        bus.emit(channels(branchId).bar, 'announcements', control.announcementsForBranch(branchId));
+      }
+      control.audit({ actor: `owner:${req.owner.id}`, action: 'announcement.send', brandId, detail: { id, branches: branchIds?.length ?? 'all' }, ip: req.ip });
+      return reply.code(201).send({ announcements: control.announcementsOfBrand(brandId) });
+    });
+
+    b.post('/announcements/:id/delete', async (req) => {
+      ownerOnly(req);
+      control.deleteAnnouncement(Number(req.params.id), req.params.brand);
+      for (const br of control.branchesOfBrand(req.params.brand)) {
+        bus.emit(channels(br.id).bar, 'announcements', control.announcementsForBranch(br.id));
+      }
+      return { announcements: control.announcementsOfBrand(req.params.brand) };
+    });
+
+    // ---- a branch's cashiers, each with their own PIN (owner or that branch's manager) ----
+
+    const staffView = (s) => ({ id: s.id, name: s.name, pin: unseal(config.cookieSecret, s.pin_sealed) });
+    b.get('/branches/:branch/staff', async (req) => ({ staff: ownBranch(req).store.listStaff().map(staffView) }));
+
+    async function staffPin(ctx, typed, exceptId = null) {
+      const pin = typed ? String(typed).trim() : newPin();
+      if (!PIN_RE.test(pin)) throw new HttpError(400, 'الرقم السري من 4 لـ 8 أرقام', { field: 'pin' });
+      // Two people with one PIN would sign in as each other (or as the branch).
+      const taken = [ctx.store.getShop().pin_hash, ...ctx.store.listStaff().filter((s) => s.id !== exceptId).map((s) => s.pin_hash)];
+      for (const hash of taken) {
+        if (await verifyPin(pin, hash)) throw new HttpError(409, 'الرقم السري ده مستخدم في الفرع، اختار غيره', { field: 'pin' });
+      }
+      return { pin, fields: await pinFields(config.cookieSecret, pin) };
+    }
+
+    b.post('/branches/:branch/staff', async (req, reply) => {
+      const ctx = ownBranch(req);
+      if (ctx.store.listStaff().length >= MAX_STAFF) throw new HttpError(400, `أقصى عدد ${MAX_STAFF} كاشير للفرع`);
+      const name = cleanPersonName(req.body?.name);
+      const { fields } = await staffPin(ctx, req.body?.pin);
+      const staff = ctx.store.addStaff({ name, pinHash: fields.pin_hash, pinSealed: fields.pin_sealed });
+      control.audit({ actor: `owner:${req.owner.id}`, action: 'staff.add', brandId: req.params.brand, branchId: ctx.branch.id, detail: { name }, ip: req.ip });
+      return reply.code(201).send({ staff: ctx.store.listStaff().map(staffView), added: staffView(staff) });
+    });
+
+    b.post('/branches/:branch/staff/:staff/pin', async (req) => {
+      const ctx = ownBranch(req);
+      const staff = ctx.store.getStaff(Number(req.params.staff));
+      if (!staff) throw new HttpError(404, 'الكاشير ده مش موجود');
+      const { fields } = await staffPin(ctx, req.body?.pin, staff.id);
+      ctx.store.setStaffPin(staff.id, { pinHash: fields.pin_hash, pinSealed: fields.pin_sealed });
+      control.audit({ actor: `owner:${req.owner.id}`, action: 'staff.pin', brandId: req.params.brand, branchId: ctx.branch.id, detail: { name: staff.name }, ip: req.ip });
+      return { staff: ctx.store.listStaff().map(staffView) };
+    });
+
+    b.post('/branches/:branch/staff/:staff/delete', async (req) => {
+      const ctx = ownBranch(req);
+      const staff = ctx.store.getStaff(Number(req.params.staff));
+      if (!staff) throw new HttpError(404, 'الكاشير ده مش موجود');
+      ctx.store.deleteStaff(staff.id);
+      control.audit({ actor: `owner:${req.owner.id}`, action: 'staff.delete', brandId: req.params.brand, branchId: ctx.branch.id, detail: { name: staff.name }, ip: req.ip });
+      return { staff: ctx.store.listStaff().map(staffView) };
     });
 
     // ---- the account itself ----

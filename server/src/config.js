@@ -1,6 +1,8 @@
 import path from 'node:path';
 
 const str = (value, fallback) => (value === undefined || value === '' ? fallback : value);
+// A payment detail with Aurexis's own number as the default; "off" hides it.
+const payDetail = (value, fallback) => (value === 'off' ? '' : str(value, fallback));
 
 function int(value, fallback, min, max) {
   const n = Number.parseInt(value, 10);
@@ -63,13 +65,14 @@ export function loadConfig(env = process.env) {
     superPasswordHash: str(env.SUPER_PASSWORD_HASH, ''),
     trialDays: int(env.TRIAL_DAYS, 3, 0, 365),
     // Self-serve sign-up at /signup (SIGNUP=off turns it off) and where subscriptions are paid.
-    // Every PAY_* is optional; the owner's «اشترك» shows the ones that are set.
+    // The owner's «اشترك» shows the ones that are set (PAY_*=off hides one). WhatsApp is also
+    // where «نسيت كلمة السر؟» leads.
     signup: env.SIGNUP !== 'off',
     signupRatePerHour: int(env.SIGNUP_RATE_PER_HOUR, 10, 1, 100000),
     pay: {
-      instapay: str(env.PAY_INSTAPAY, ''),
-      wallet: str(env.PAY_WALLET, ''),
-      whatsapp: str(env.PAY_WHATSAPP, ''),
+      instapay: payDetail(env.PAY_INSTAPAY, '01024066401'),
+      wallet: payDetail(env.PAY_WALLET, '01024066401'),
+      whatsapp: payDetail(env.PAY_WHATSAPP, '01043833456'),
     },
     // Optional weekly owner summary. Off unless SMTP_HOST is set.
     smtp: {

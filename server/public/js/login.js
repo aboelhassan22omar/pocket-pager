@@ -38,6 +38,11 @@ form.addEventListener('submit', async (e) => {
   go.textContent = 'بندخلك…';
   try {
     const res = await api('/api/login', { method: 'POST', body: { login, password } });
+    try {
+      localStorage.setItem('pp:brand', res.brandId);
+    } catch {
+      /* private mode */
+    }
     // Only our own dashboard path, never somewhere else.
     location.href = next && next.startsWith(`/brand/${res.brandId}`) ? next : res.to;
   } catch (err) {

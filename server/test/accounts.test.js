@@ -43,7 +43,7 @@ describe('self-serve sign-up, login, trial once, managers, billing', () => {
   let server;
   let su;
   before(async () => {
-    server = await startServer({ SUPER_PASSWORD_HASH: await hashPin(SUPER_PASSWORD), PAY_INSTAPAY: 'pocket@instapay' });
+    server = await startServer({ SUPER_PASSWORD_HASH: await hashPin(SUPER_PASSWORD), PAY_INSTAPAY: 'pocket@instapay', PAY_WALLET: 'off' });
     su = client(server.url);
     await su.post('/api/super/login', { password: SUPER_PASSWORD });
   });
@@ -51,6 +51,11 @@ describe('self-serve sign-up, login, trial once, managers, billing', () => {
 
   let owner;
   let pin;
+  test('help on WhatsApp in international form, for wa.me', async () => {
+    const info = (await client(server.url).get('/api/signup/info')).data;
+    assert.equal(info.support, '201043833456');
+  });
+
   test('sign-up makes the brand, the first branch on a 3-day trial, and signs the owner in', async () => {
     owner = client(server.url);
     assert.deepEqual((await owner.get('/api/signup/check?brand=cafe-z')).data.brand.ok, true);
@@ -160,7 +165,7 @@ describe('self-serve sign-up, login, trial once, managers, billing', () => {
   test('«اشترك» asks for every branch × months; the super confirms and the branches work', async () => {
     const bill = await owner.get('/api/brand/cafe-z/billing');
     assert.equal(bill.data.branches.length, 2);
-    assert.deepEqual(bill.data.methods, [{ id: 'instapay', value: 'pocket@instapay' }]);
+    assert.deepEqual(bill.data.methods, [{ id: 'instapay', value: 'pocket@instapay' }, { id: 'whatsapp', value: '01043833456' }]);
     const q3 = bill.data.quotes.find((q) => q.months === 3);
     assert.equal(q3.total, 2 * 2300 * 3);
 
@@ -181,6 +186,53 @@ describe('self-serve sign-up, login, trial once, managers, billing', () => {
     const maadi = after.data.branches.find((b) => b.id === 'cafe-z-maadi');
     // Paid from the end of the running trial: 3 x 30 days after it.
     assert.ok(maadi.paidUntil > maadi.trialEndsAt + 89 * 86_400_000);
+  });
+
+  test('pause: no new numbers and no new orders until the branch opens again', async () => {
+    const bar = client(server.url);
+    await bar.post('/api/bar/login', { shopId: 'cafe-z-maadi', pin: '9876' });
+    const k = new URL((await bar.post('/api/bar/cafe-z-maadi/settings', { qrMode: 'both' })).status === 200
+      ? (await bar.get('/api/bar/cafe-z-maadi/state')).data.qr.staticUrl : '').searchParams.get('k');
+    assert.equal((await owner.post('/api/brand/cafe-z/branches/cafe-z-maadi/settings', { paused: true })).status, 200);
+    assert.equal((await bar.get('/api/bar/cafe-z-maadi/state')).data.shop.paused, true);
+    const claim = await client(server.url).post('/api/b/cafe-z-maadi/claim', { k });
+    assert.equal(claim.status, 409);
+    assert.equal(claim.data.code, 'paused');
+    assert.equal((await bar.post('/api/bar/cafe-z-maadi/receipts', { receipt: '12' })).status, 409);
+    await owner.post('/api/brand/cafe-z/branches/cafe-z-maadi/settings', { paused: false });
+    assert.equal((await client(server.url).post('/api/b/cafe-z-maadi/claim', { k })).status, 200);
+  });
+
+  test('cashiers with their own PIN: orders yes, settings no; removed = signed out', async () => {
+    const base = '/api/brand/cafe-z/branches/cafe-z-maadi/staff';
+    assert.equal((await owner.post(base, { name: 'منى', pin: '9876' })).status, 409, 'the branch PIN is taken');
+    const add = await owner.post(base, { name: 'منى', pin: '1357' });
+    assert.equal(add.status, 201);
+    assert.equal(add.data.added.pin, '1357');
+    const cashier = client(server.url);
+    const login = await cashier.post('/api/bar/login', { shopId: 'cafe-z-maadi', pin: '1357' });
+    assert.deepEqual(login.data, { ok: true, staff: 'منى' });
+    const state = await cashier.get('/api/bar/cafe-z-maadi/state');
+    assert.equal(state.data.staff.name, 'منى');
+    assert.equal((await cashier.post('/api/bar/cafe-z-maadi/settings', { maxNumber: 99 })).status, 403);
+    assert.equal((await cashier.post('/api/bar/cafe-z-maadi/counter', { delta: 1 })).status, 200);
+    await owner.post(`${base}/${add.data.added.id}/delete`);
+    assert.equal((await cashier.get('/api/bar/cafe-z-maadi/state')).status, 401);
+  });
+
+  test('the owner’s message reaches the chosen branches’ cashier screens until read', async () => {
+    const bar = client(server.url);
+    await bar.post('/api/bar/login', { shopId: 'cafe-z-maadi', pin: '9876' });
+    const sent = await owner.post('/api/brand/cafe-z/announcements', { text: 'اجتماع بكرة الساعة 10', branchIds: ['cafe-z-maadi'] });
+    assert.equal(sent.status, 201);
+    const [msg] = (await bar.get('/api/bar/cafe-z-maadi/state')).data.announcements;
+    assert.equal(msg.text, 'اجتماع بكرة الساعة 10');
+    assert.equal((await bar.post(`/api/bar/cafe-z-maadi/announcements/${msg.id}/read`)).status, 200);
+    assert.deepEqual((await bar.get('/api/bar/cafe-z-maadi/state')).data.announcements, []);
+    const list = (await owner.get('/api/brand/cafe-z/announcements')).data.announcements;
+    assert.ok(list[0].reads['cafe-z-maadi']);
+    // Another brand's branch never sees it, and managers can't send.
+    assert.equal((await owner.post('/api/brand/cafe-z/announcements', { text: '' })).status, 400);
   });
 
   test('closing the account stops everything and signs out', async () => {

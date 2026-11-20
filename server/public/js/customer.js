@@ -817,6 +817,12 @@ function pickNumber(numbers, note = '') {
 }
 
 async function boot() {
+  // The bare /s/ (the App Clip's link prefix): no branch yet, so say what to do, not «not found».
+  if (!shopId) {
+    await holdSplash();
+    fatal('امسح الكود اللي عند الكاشير بكاميرا موبايلك، ورقم طلبك هيظهر على طول');
+    return;
+  }
   try {
     shop = await api(branchApi);
   } catch (err) {

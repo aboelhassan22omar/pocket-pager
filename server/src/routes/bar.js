@@ -17,6 +17,8 @@ import { appleStatus, barOrder, barShop, orderUrl, qrInfo } from '../views.js';
 import { buildId } from '../build.js';
 
 const STATUS_TARGETS = ['preparing', 'ready', 'picked', 'cancelled'];
+export const PAUSED_TEXT = 'الفرع مقفول مؤقتًا. اسأل الكاشير';
+export const MAX_STAFF = 30;
 const HEX_COLOR_RE = /^#[0-9a-f]{6}$/i;
 // g.page/r/…/review, maps.app.goo.gl/…, search.google.com/local/writereview?placeid=…, google.com.eg/…
 const GOOGLE_HOST_RE = /(^|\.)(google\.[a-z]{2,3}(\.[a-z]{2})?|g\.page|goo\.gl)$/i;
@@ -71,7 +73,8 @@ export default async function barRoutes(app, deps) {
   app.addHook('onClose', async () => loginLimiter.close());
 
   // Staff cookie: signed with a key derived for this branch only (sessions.js).
-  const setSession = (reply, shop) => setStaffSession(reply, config, shop);
+  const announcementsFor = (branchId) => control.announcementsForBranch(branchId);
+  const setSession = (reply, shop, staff = null) => setStaffSession(reply, config, shop, { staff });
 
   function requireBar(req) {
     const ctx = tenants.resolve(req.params.shop);
@@ -81,9 +84,13 @@ export default async function barRoutes(app, deps) {
       const device = control.getDevice(id);
       return Boolean(device) && !device.revoked_at && device.branch_id === shop.id;
     };
-    if (!verifyStaffSession(req, config, shop, { deviceLinked })) throw new HttpError(401, 'سجّل دخول الأول');
+    const staffPinHash = (id) => ctx.store.getStaff(Number(id))?.pin_hash ?? null;
+    const session = verifyStaffSession(req, config, shop, { deviceLinked, staffPinHash });
+    if (!session) throw new HttpError(401, 'سجّل دخول الأول');
     req.ctx = ctx;
     req.shop = shop;
+    // A cashier with their own PIN runs the orders; the branch's settings stay with the branch PIN.
+    req.staff = session.st ? ctx.store.getStaff(Number(session.st)) : null;
   }
 
   // Order ids are looked up in this branch's database only.
@@ -100,12 +107,22 @@ export default async function barRoutes(app, deps) {
       reply.header('retry-after', String(limit.retryAfter));
       throw new HttpError(429, 'محاولات كتير. استنى دقيقة وجرّب تاني');
     }
-    const shop = tenants.get(shopId)?.store.getShop();
-    if (!shop || !(await verifyPin(String(pin ?? ''), shop.pin_hash))) {
-      throw new HttpError(401, 'الرقم السري غلط');
+    const store = SHOP_ID_RE.test(String(shopId ?? '')) ? tenants.get(shopId)?.store : null;
+    const shop = store?.getShop();
+    if (!shop) throw new HttpError(401, 'الرقم السري غلط');
+    const typed = String(pin ?? '');
+    if (await verifyPin(typed, shop.pin_hash)) {
+      setSession(reply, shop);
+      return { ok: true };
     }
-    setSession(reply, shop);
-    return { ok: true };
+    // A cashier's own PIN.
+    for (const staff of store.listStaff().slice(0, MAX_STAFF)) {
+      if (await verifyPin(typed, staff.pin_hash)) {
+        setSession(reply, shop, staff);
+        return { ok: true, staff: staff.name };
+      }
+    }
+    throw new HttpError(401, 'الرقم السري غلط');
   });
 
   app.post('/api/bar/:shop/logout', async (req, reply) => {
@@ -122,6 +139,11 @@ export default async function barRoutes(app, deps) {
       const stopped = stopReason(req.ctx.branch);
       if (stopped) throw stoppedError(stopped);
       const isLogo = req.routeOptions.url?.endsWith('/logo');
+      // A cashier's own PIN: orders yes; the branch's settings, logo and POS link no.
+      const settingsRoute = ['/settings', '/logo', '/pos/rotate', '/qr/rotate-key'].some((p) => req.routeOptions.url?.endsWith(p));
+      if (req.staff && req.method !== 'GET' && settingsRoute) {
+        throw new HttpError(403, 'الإعدادات بالرقم السري بتاع الفرع بس');
+      }
       // Every visitor shares the demo café: its settings stay as they are.
       const locked = ['/settings', '/pos/rotate'].some((path) => req.routeOptions.url?.endsWith(path));
       if (req.method !== 'GET' && isDemo(req.shop.id) && (isLogo || locked)) {
@@ -144,8 +166,20 @@ export default async function barRoutes(app, deps) {
         apple: appleStatus(config, notifier.apnsReady),
         plan: planView(req.ctx.branch),
         counter: req.ctx.store.counter(),
+        // Who is signed in: a cashier with their own PIN, or the branch PIN (null).
+        staff: req.staff ? { name: req.staff.name } : null,
+        announcements: announcementsFor(req.ctx.branch.id),
         serverNow: Date.now(),
       };
+    });
+
+    // The owner's message to this branch: read once, by anyone on its cashier screen.
+    bar.post('/announcements/:id/read', async (req) => {
+      const id = Number(req.params.id);
+      if (!announcementsFor(req.ctx.branch.id).some((a) => a.id === id)) throw new HttpError(404, 'الرسالة دي مش موجودة');
+      control.markAnnouncementRead(id, req.ctx.branch.id, req.staff?.name ?? null);
+      bus.emit(channels(req.ctx.branch.id).bar, 'announcements', announcementsFor(req.ctx.branch.id));
+      return { ok: true };
     });
 
     bar.get('/events', async (req, reply) => {
@@ -208,6 +242,7 @@ export default async function barRoutes(app, deps) {
     // Order QR mode: the cashier rings an order up; the customer screen shows its QR.
     // { type: 'delivery', phone }: a delivery order for that mobile (the link goes on WhatsApp).
     bar.post('/orders', async (req) => {
+      if (req.shop.paused) throw new HttpError(409, PAUSED_TEXT);
       const delivery = req.body?.type === 'delivery';
       if (delivery && !req.shop.delivery) throw new HttpError(409, 'التوصيل مش متفعّل للفرع ده');
       if (!delivery && !req.shop.order_qr) throw new HttpError(409, 'كود لكل طلب مش متفعّل للفرع ده');
@@ -228,6 +263,7 @@ export default async function barRoutes(app, deps) {
 
     // Takeaway numbers typed by the cashier: the receipt's number in, the takeaway number out.
     bar.post('/receipts', async (req) => {
+      if (req.shop.paused) throw new HttpError(409, PAUSED_TEXT);
       if (!req.shop.manual_numbers) throw new HttpError(409, 'أرقام التيكاواي اليدوي مش متفعّلة للفرع ده');
       const receipt = latinDigits(String(req.body?.receipt ?? '').trim());
       if (!RECEIPT_RE.test(receipt)) throw invalid('receipt', 'اكتب رقم الفاتورة بالأرقام بس');

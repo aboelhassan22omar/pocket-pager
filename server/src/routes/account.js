@@ -43,6 +43,15 @@ export function accountPhone(value, field = 'phone') {
   }
 }
 
+/** A WhatsApp number for wa.me links: digits, Egyptian mobiles in international form. */
+export function waNumber(value) {
+  try {
+    return accountPhone(value);
+  } catch {
+    return String(value).replace(/\D/g, '');
+  }
+}
+
 /** The ways the same phone may already be stored on an owner (typed by the super, or by us). */
 function phoneForms(digits) {
   const forms = new Set([digits, `+${digits}`]);
@@ -118,7 +127,8 @@ export default async function accountRoutes(app, deps) {
   app.get('/api/signup/info', async () => ({
     signup: config.signup,
     trialDays: config.trialDays,
-    support: config.pay.whatsapp || null,
+    // For wa.me: international digits (01043833456 -> 201043833456).
+    support: config.pay.whatsapp ? waNumber(config.pay.whatsapp) : null,
     host: config.publicUrl.replace(/^https?:\/\//, ''),
   }));
 

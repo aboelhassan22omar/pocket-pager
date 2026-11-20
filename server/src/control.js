@@ -198,6 +198,27 @@ export const CONTROL_MIGRATIONS = [
   CREATE INDEX billing_requests_status ON billing_requests (status, created_at);
   CREATE INDEX billing_requests_brand ON billing_requests (brand_id, created_at);
   `,
+  // 14: the owner's messages to their branches' cashier screens (branch_ids NULL = every branch),
+  //     and who read each one on which branch.
+  `
+  CREATE TABLE announcements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    brand_id TEXT NOT NULL REFERENCES brands (id),
+    text TEXT NOT NULL,
+    branch_ids TEXT,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    actor TEXT
+  );
+  CREATE INDEX announcements_brand ON announcements (brand_id, created_at);
+  CREATE TABLE announcement_reads (
+    announcement_id INTEGER NOT NULL REFERENCES announcements (id) ON DELETE CASCADE,
+    branch_id TEXT NOT NULL,
+    read_at INTEGER NOT NULL,
+    reader TEXT,
+    PRIMARY KEY (announcement_id, branch_id)
+  );
+  `,
 ];
 
 export const branchDbPath = (brandId, branchId) => `tenants/${brandId}/${branchId}/pager.db`;
@@ -497,6 +518,46 @@ export class ControlStore {
     return this.getOwner(id);
   }
 
+  // ---- the owner's messages to the cashier screens ----
+
+  createAnnouncement({ brandId, text, branchIds = null, days = 3, actor = null, at = Date.now() }) {
+    const res = this.db.prepare(`INSERT INTO announcements (brand_id, text, branch_ids, created_at, expires_at, actor)
+      VALUES (?, ?, ?, ?, ?, ?)`).run(brandId, text, branchIds ? JSON.stringify(branchIds) : null, at, at + days * 86_400_000, actor);
+    return Number(res.lastInsertRowid);
+  }
+
+  /** The brand's latest messages with who read them: [{ id, text, branchIds, createdAt, expiresAt, reads: {branch: at} }]. */
+  announcementsOfBrand(brandId, limit = 20) {
+    const rows = this.db.prepare('SELECT * FROM announcements WHERE brand_id = ? ORDER BY id DESC LIMIT ?').all(brandId, limit);
+    const reads = this.db.prepare('SELECT branch_id, read_at, reader FROM announcement_reads WHERE announcement_id = ?');
+    return rows.map((r) => ({
+      id: r.id, text: r.text, branchIds: r.branch_ids ? JSON.parse(r.branch_ids) : null, createdAt: r.created_at, expiresAt: r.expires_at,
+      reads: Object.fromEntries(reads.all(r.id).map((x) => [x.branch_id, { at: x.read_at, by: x.reader }])),
+    }));
+  }
+
+  /** Unread, unexpired messages for one branch's cashier screen. */
+  announcementsForBranch(branchId, now = Date.now()) {
+    const branch = this.getBranch(branchId);
+    if (!branch) return [];
+    return this.db.prepare(`SELECT a.* FROM announcements a
+      WHERE a.brand_id = ? AND a.expires_at > ?
+        AND NOT EXISTS (SELECT 1 FROM announcement_reads r WHERE r.announcement_id = a.id AND r.branch_id = ?)
+      ORDER BY a.id`).all(branch.brand_id, now, branchId)
+      .filter((a) => !a.branch_ids || JSON.parse(a.branch_ids).includes(branchId))
+      .map((a) => ({ id: a.id, text: a.text, createdAt: a.created_at }));
+  }
+
+  markAnnouncementRead(id, branchId, reader = null, at = Date.now()) {
+    this.db.prepare('INSERT OR IGNORE INTO announcement_reads (announcement_id, branch_id, read_at, reader) VALUES (?, ?, ?, ?)')
+      .run(id, branchId, at, reader);
+  }
+
+  deleteAnnouncement(id, brandId) {
+    this.db.prepare('DELETE FROM announcement_reads WHERE announcement_id IN (SELECT id FROM announcements WHERE id = ? AND brand_id = ?)').run(id, brandId);
+    this.db.prepare('DELETE FROM announcements WHERE id = ? AND brand_id = ?').run(id, brandId);
+  }
+
   // ---- free trials: once per phone and per device, ever ----
 
   trialUsed(keys) {
@@ -686,6 +747,8 @@ export class ControlStore {
         'DELETE FROM devices WHERE brand_id = ?',
         'DELETE FROM payments WHERE branch_id IN (SELECT id FROM branches WHERE brand_id = ?)',
         'DELETE FROM billing_requests WHERE brand_id = ?',
+        'DELETE FROM announcement_reads WHERE announcement_id IN (SELECT id FROM announcements WHERE brand_id = ?)',
+        'DELETE FROM announcements WHERE brand_id = ?',
         'DELETE FROM owners WHERE brand_id = ?',
         'DELETE FROM branches WHERE brand_id = ?',
         'DELETE FROM brands WHERE id = ?',

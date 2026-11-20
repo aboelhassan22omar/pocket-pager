@@ -526,6 +526,69 @@
   color: var(--on-danger);
 }
 
+/* The branch paused by its owner: as loud as a stop, it changes what the counter can do. */
+.plan-banner[data-plan='paused'] {
+  border-color: transparent;
+  /* A deeper red than --danger: white small text on it reads at 6.5:1 (AA). */
+  background: #a8352d;
+  color: #fff;
+}
+
+/* The owner's message: on top of the orders until someone taps «تمام، قريتها». */
+.announce {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: min(100% - 2 * var(--gutter), 1100px);
+  margin: 12px auto 0;
+  padding: 14px 16px;
+  border-radius: var(--r-card);
+  background: var(--surface-2);
+  box-shadow: 0 10px 24px -14px rgb(0 0 0 / 0.7);
+}
+
+.announce[hidden] {
+  display: none;
+}
+
+.announce-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.announce-text strong {
+  color: var(--accent);
+  font-size: var(--fs-sm);
+}
+
+.announce-text p {
+  margin: 2px 0 0;
+  font-size: var(--fs-lg);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.announce-more {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.staff-name {
+  padding: 2px 10px;
+  border-radius: 99px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+
+@media (max-width: 575.98px) {
+  .announce {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
 /* ---------- long-press sheet ---------- */
 
 .sheet-backdrop {

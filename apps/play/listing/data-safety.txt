@@ -1,0 +1,11 @@
+Google Play > App content > Data safety
+
+Does your app collect or share user data? Yes, collects. Shares: No.
+Is all data encrypted in transit? Yes (HTTPS only).
+Can users request deletion? Yes: in the app, «حسابي» -> «اقفل الحساب».
+
+Collected:
+- Personal info > Name: collected, required, App functionality, Account management. Not shared.
+- Personal info > Phone number: collected, required, App functionality, Account management. Not shared.
+- App activity > Other actions (orders, settings of the restaurant): App functionality. Not shared.
+Not collected: location, contacts, photos (the logo is uploaded by choice, stored for the customer page), financial info, device IDs, advertising ID.

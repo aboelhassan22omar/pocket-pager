@@ -3,12 +3,13 @@ import { watchAppUpdates } from './app-update.js';
 import { Chime, DEFAULT_RING, RING_TONES } from './chime.js';
 import { applyTheme } from './color.js';
 import { appInviteText, branchCardHtml, devicesHtml, renewalHtml, renewalInfo } from './dashboard.js';
+import { openFeatureList } from './features.js';
 import { filePickHtml, openForm } from './forms.js';
 import { icons } from './icons.js';
 import { TEXT_DEFAULTS, TEXT_GROUPS, TEXT_MAX } from './texts.js';
 import { toast } from './staff.js';
 import {
-  inStoreApp, openAddBranch, openDeleteAccount, openLinks, openPassword, planBannerHtml, renderBilling, renderTeam, welcomeHtml,
+  inStoreApp, openAddBranch, openBroadcast, openStaff, openDeleteAccount, openLinks, openPassword, planBannerHtml, renderBilling, renderTeam, welcomeHtml,
 } from './owner-plus.js';
 import { api, esc, isCashierApp, isIOS, reloadOnNewVersion, shopIdFromPath } from './util.js';
 
@@ -176,6 +177,7 @@ function render() {
       extra: data.brand.selfServe ? '' : renewalHtml(b.plan, b.lastPayment),
       actions: `<button class="btn btn-sm btn-primary" data-act="links" data-branch="${esc(b.id)}" type="button">اللينكات والرقم السري</button>
         <button class="btn btn-sm" data-act="features" data-branch="${esc(b.id)}" type="button">الخصائص</button>
+        <button class="btn btn-sm" data-act="staff" data-branch="${esc(b.id)}" type="button">الكاشيرية</button>
         ${b.delivery ? `<button class="btn btn-sm" data-act="drivers" data-branch="${esc(b.id)}" type="button">المناديب</button>` : ''}
         ${owner ? `<button class="btn btn-sm btn-quiet" data-act="rename" data-branch="${esc(b.id)}" type="button">غيّر الاسم</button>` : ''}`,
     })).join('')}</div>`
@@ -451,6 +453,11 @@ function accountAction(act) {
     return;
   }
   if (act === 'logout') {
+    try {
+      localStorage.removeItem('pp:brand');
+    } catch {
+      /* private mode */
+    }
     api(`${base}/logout`, { method: 'POST' }).finally(() => location.reload());
     return;
   }
@@ -578,103 +585,6 @@ function appAction(el) {
   }
 }
 
-const FORCED_HINT = 'مقفولة من الإدارة';
-
-/** One feature switch; a feature the super forced off is shown but can't be changed. */
-function featureToggle(b, feature, label, hint) {
-  const forced = b.forcedOff.includes(feature);
-  return { name: `ff_${feature}`, type: 'toggle', label, hint: forced ? FORCED_HINT : hint, value: b.toggles[feature], disabled: forced };
-}
-
-/**
- * The branch's features, in the order owners need them, each with what it does, who sees it and
- * what to type. Delivery and the takeaway box are on for a new branch.
- */
-function featureFields(b) {
-  const reviewHint = `لينك فرع ${b.name} بس. هتلاقيه في Google Business Profile بتاع الفرع ← «اطلب تقييمات» ← انسخ اللينك والصقه هنا`;
-  return [
-    { type: 'heading', label: 'التوصيل', hint: 'لو عندك مناديب بتوصّل الطلبات. العميل بيتابع طلبه لحد ما يوصله، وموبايله بيرن لما الطلب يخرج.' },
-    {
-      name: 'delivery', type: 'toggle', label: 'توصيل بمناديب المحل',
-      hint: 'الكاشير بيكتب موبايل العميل، والعميل بيوصله لينك المتابعة على واتساب. لما الطلب يخرج الكاشير يختار المندوب', value: b.delivery,
-    },
-    {
-      name: 'deliveryCloseMinutes', label: 'الطلب يتقفل لوحده بعد كام دقيقة من خروجه', type: 'number', inputmode: 'numeric', dir: 'ltr',
-      value: b.deliveryCloseMinutes ?? 60, hint: 'اكتب رقم من 15 لـ 240. لو المندوب وصل بدري، الكاشير يدوس «وصل»',
-    },
-
-    { type: 'heading', label: 'رقم فاتورة التيكاواي', hint: 'لو سيستم الكاشير بتاعك بيدّي كل الطلبات أرقام ورا بعض، وإنت عايز التيكاواي ياخد رقم من عدّ البيجر.' },
-    {
-      name: 'manualNumbers', type: 'toggle', label: 'خانة «رقم الفاتورة» فوق شاشة الكاشير',
-      hint: 'الكاشير يكتب رقم الفاتورة (مثلًا 27) فتاخد الرقم الجاي (مثلًا 3). أول عميل يمسح الكود بعدها بياخد الرقم ده على طول', value: b.manualNumbers,
-    },
-
-    { type: 'heading', label: 'بطاقة الختم', hint: 'بتخلّي العميل يرجعلك: ختم مع كل طلب، وهدية لما يكمّل الختمات. من غير كارت ورق.' },
-    featureToggle(b, 'loyalty', 'شغّل بطاقة الختم', 'العميل بياخد ختم لما يستلم طلبه، وبيشوف كام فاضل على الهدية'),
-    { name: 'loyaltyEvery', label: 'الهدية بعد كام ختم؟', type: 'number', inputmode: 'numeric', dir: 'ltr', value: b.loyaltyEvery, hint: 'رقم من 2 لـ 20. مثلًا 5 يعني الطلب السادس هدية' },
-    { name: 'loyaltyRewardText', label: 'الهدية إيه؟', value: b.loyaltyRewardText, placeholder: 'مثلًا: مشروب ببلاش', maxlength: 60, hint: 'الكلام ده العميل بيشوفه بالظبط' },
-    {
-      name: 'loyaltyProduct', label: 'الختم على منتج واحد بس؟ (اختياري)', value: b.loyaltyProduct ?? '', placeholder: 'مثلًا: لاتيه', maxlength: 40,
-      hint: 'سيبها فاضية والختم يبقى مع أي طلب. لو كتبت منتج، الكاشير بيتسأل وهو بيسلّم «الطلب فيه المنتج ده؟»',
-    },
-
-    { type: 'heading', label: 'عرض وهو مستني', hint: 'إعلان صغير تحت رقم الطلب، بيظهر بس وهو مستني. مكان كويس لمنتج جديد.' },
-    featureToggle(b, 'promo', 'شغّل العرض', 'بيختفي لوحده أول ما الطلب يجهز'),
-    { name: 'promoText', label: 'كلام العرض', type: 'textarea', value: b.promoText, maxlength: 120, placeholder: 'مثلًا: جرّب الكرواسون الجديد' },
-    {
-      name: 'promoImage', label: 'صورة العرض (اختياري)', type: 'file', accept: 'image/png,image/jpeg,image/webp',
-      hint: b.promoImageUrl ? 'فيه صورة دلوقتي. اختار صورة تانية عشان تغيّرها' : 'صورة PNG أو JPG، أقل من 500 كيلوبايت',
-    },
-    ...(b.promoImageUrl ? [{ name: 'promoImageRemove', type: 'toggle', label: 'شيل الصورة', value: false }] : []),
-    { name: 'promoStartsAt', label: 'يبدأ من يوم (اختياري)', type: 'date', dir: 'ltr', value: b.promoStartsAt ?? '' },
-    { name: 'promoEndsAt', label: 'لحد يوم (اختياري)', type: 'date', dir: 'ltr', value: b.promoEndsAt ?? '' },
-
-    { type: 'heading', label: 'رأي العميل', hint: 'بعد ما العميل يستلم، تعرف رأيه وتزوّد تقييماتك على جوجل.' },
-    featureToggle(b, 'review', 'زرار «قيّمنا على جوجل»', 'بيظهر للعميل بعد الاستلام ويفتح النجوم بتاعة جوجل على طول'),
-    {
-      name: 'googlePlaceId', label: 'لينك تقييم جوجل للفرع ده', dir: 'ltr', value: b.legacyReviewUrl ?? b.googlePlaceId ?? '',
-      placeholder: 'https://g.page/r/…/review', hint: reviewHint,
-    },
-    {
-      name: 'messageBox', type: 'toggle', label: 'خانة «رسالة للإدارة»',
-      hint: 'العميل يقدر يكتبلك شكوى أو اقتراح من غير ما الكاشير يشوفها. بتوصلك في «التحليلات»', value: b.messageBox,
-    },
-
-    { type: 'heading', label: 'متقدم', hint: 'سيبها زي ما هي لو مش متأكد.' },
-    {
-      name: 'orderQr', type: 'toggle', label: 'كود مختلف لكل طلب',
-      hint: 'بدل كود واحد للكل: أول ما الكاشير يعمل الطلب، شاشة العميل بتعرض كود الطلب ده بس. مفيد لو السيستم مربوط', value: b.orderQr,
-    },
-    {
-      name: 'orderShare', type: 'toggle', label: 'أكتر من موبايل على نفس الطلب',
-      hint: 'لو مجموعة أصحاب، كلهم يمسحوا نفس الكود وموبايلاتهم كلها ترن', value: b.orderShare,
-    },
-  ];
-}
-
-function featureBody(b, v) {
-  const features = {};
-  for (const f of ['review', 'loyalty', 'promo']) {
-    if (!b.forcedOff.includes(f)) features[f] = v[`ff_${f}`] === 'on';
-  }
-  return {
-    features,
-    googlePlaceId: v.googlePlaceId ?? '',
-    loyaltyEvery: Number(v.loyaltyEvery),
-    loyaltyRewardText: v.loyaltyRewardText ?? '',
-    loyaltyProduct: v.loyaltyProduct ?? '',
-    promoText: v.promoText ?? '',
-    promoStartsAt: v.promoStartsAt ?? '',
-    promoEndsAt: v.promoEndsAt ?? '',
-    orderQr: v.orderQr === 'on',
-    orderShare: v.orderShare === 'on',
-    manualNumbers: v.manualNumbers === 'on',
-    messageBox: v.messageBox === 'on',
-    delivery: v.delivery === 'on',
-    deliveryCloseMinutes: Number(v.deliveryCloseMinutes),
-  };
-}
-
 // ---------- the branch's delivery drivers ----------
 
 const driversHtml = (list) => (list.length
@@ -752,26 +662,6 @@ async function openDrivers(b) {
   });
 }
 
-function openFeatures(b) {
-  openForm({
-    title: `خصائص ${b.name}`,
-    intro: 'شغّل اللي محتاجه بس. تقدر تقفل أي حاجة في أي وقت، ومفيش بيانات بتضيع.',
-    fields: featureFields(b),
-    onSubmit: async (v) => {
-      const branchBase = `${base}/branches/${encodeURIComponent(b.id)}`;
-      const image = v.promoImage instanceof File && v.promoImage.size ? v.promoImage : null;
-      if (image && image.size > 500 * 1024) {
-        throw Object.assign(new Error('الصورة لازم تكون أقل من 500 كيلوبايت'), { data: { field: 'promoImage' } });
-      }
-      await api(`${branchBase}/settings`, { method: 'POST', body: featureBody(b, v) });
-      if (image) await api(`${branchBase}/promo-image`, { method: 'POST', raw: image, contentType: image.type });
-      else if (v.promoImageRemove === 'on') await api(`${branchBase}/promo-image`, { method: 'DELETE', body: {} });
-      toast('اتحفظ');
-      await refresh();
-    },
-  });
-}
-
 async function refresh() {
   try {
     data = await api(`${base}/overview`);
@@ -836,6 +726,7 @@ async function boot() {
     const copyEl = e.target.closest('[data-copy-text]');
     if (copyEl) navigator.clipboard?.writeText(copyEl.dataset.copyText).then(() => toast('اللينك اتنسخ'), () => {});
   });
+  $('broadcast').addEventListener('click', () => openBroadcast({ base, branches: data.branches }).catch((err) => toast(err.message, 'error')));
   $('add-branch').addEventListener('click', () => openAddBranch({
     base, brandId, host: location.host, refresh, goBilling: data.brand.selfServe,
   }));
@@ -843,12 +734,23 @@ async function boot() {
     const el = e.target.closest('[data-act]');
     if (!el) return;
     const branch = data.branches.find((b) => b.id === el.dataset.branch);
+    if (el.dataset.act === 'staff') {
+      openStaff(branch, { base }).catch((err) => toast(err.message, 'error'));
+      return;
+    }
     if (el.dataset.act === 'links') {
       openLinks(branch, { base, refresh });
       return;
     }
     if (el.dataset.act === 'features') {
-      openFeatures(branch);
+      openFeatureList(branch, {
+        base,
+        fresh: async (id) => {
+          await refresh();
+          return data.branches.find((b) => b.id === id);
+        },
+        openDrivers: (b) => openDrivers(b).catch((err) => toast(err.message, 'error')),
+      });
       return;
     }
     if (el.dataset.act === 'drivers') {

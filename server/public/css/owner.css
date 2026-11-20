@@ -804,3 +804,124 @@
     flex-wrap: wrap;
   }
 }
+
+/* ---------- a branch's features: one line each, a switch that saves at once ---------- */
+
+.feat-list {
+  display: grid;
+  gap: 8px;
+}
+
+.feat {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--bg);
+  transition: border-color 160ms var(--ease);
+}
+
+.feat.is-on {
+  border-color: rgb(255 106 19 / 0.4);
+}
+
+.feat-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.feat.is-on .feat-icon {
+  background: rgb(255 106 19 / 0.14);
+  color: var(--accent);
+}
+
+.feat-text {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.feat-text small {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+}
+
+.feat-links {
+  display: flex;
+  gap: 14px;
+  margin-top: 4px;
+}
+
+.feat-more {
+  margin-top: 12px;
+}
+
+.feat-more summary {
+  margin-bottom: 8px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+/* Messages to the branches */
+.pick-branches {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.pick-branches legend {
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.pick-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+  gap: 6px;
+}
+
+.pick-list[hidden] {
+  display: none;
+}
+
+.pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--r-control);
+  background: var(--bg);
+}
+
+.pick input {
+  accent-color: var(--accent);
+}
+
+.sent-list {
+  display: grid;
+  gap: 8px;
+}
+
+.sent-row {
+  padding: 10px 12px;
+  border-radius: var(--r-control);
+  background: var(--bg);
+}
+
+.sent-row p {
+  margin: 0 0 2px;
+  overflow-wrap: anywhere;
+}

@@ -33,19 +33,28 @@ const cookieOptions = (config, maxAge) => ({
  * `impersonated` = a 1h session opened by super ("open as branch").
  * `deviceId` = a session of a linked cashier app: it ends as soon as the device is unlinked.
  */
-export function setStaffSession(reply, config, shop, { impersonated = false, deviceId = null } = {}) {
-  const payload = { b: shop.id, iat: Date.now(), fp: pinFingerprint(shop.pin_hash) };
+export function setStaffSession(reply, config, shop, { impersonated = false, deviceId = null, staff = null } = {}) {
+  // A cashier with their own PIN: the session follows that PIN (changed or removed -> signed out).
+  const payload = staff
+    ? { b: shop.id, iat: Date.now(), st: staff.id, fp: pinFingerprint(staff.pin_hash) }
+    : { b: shop.id, iat: Date.now(), fp: pinFingerprint(shop.pin_hash) };
   if (impersonated) payload.imp = 1;
   if (deviceId) payload.dv = deviceId;
   const value = signValue(config.cookieSecret, staffKeyInfo(shop.id), payload);
   reply.setCookie(staffCookieName(shop.id), value, cookieOptions(config, impersonated ? IMPERSONATE_MAX_AGE : SESSION_MAX_AGE));
 }
 
-export function verifyStaffSession(req, config, shop, { deviceLinked = () => true } = {}) {
+/**
+ * The session's payload when it is valid, else null. `staffPinHash(id)`: a cashier's current PIN
+ * hash (null once removed); without it, cashier sessions never verify.
+ */
+export function verifyStaffSession(req, config, shop, { deviceLinked = () => true, staffPinHash = () => null } = {}) {
   const s = verifyValue(config.cookieSecret, staffKeyInfo(shop.id), req.cookies[staffCookieName(shop.id)]);
   const maxAge = (s?.imp ? IMPERSONATE_MAX_AGE : SESSION_MAX_AGE) * 1000;
-  return Boolean(s) && s.b === shop.id && Date.now() - Number(s.iat) < maxAge && s.fp === pinFingerprint(shop.pin_hash)
-    && (!s.dv || deviceLinked(s.dv));
+  if (!s || s.b !== shop.id || !(Date.now() - Number(s.iat) < maxAge)) return null;
+  if (s.dv && !deviceLinked(s.dv)) return null;
+  const hash = s.st ? staffPinHash(s.st) : shop.pin_hash;
+  return hash && s.fp === pinFingerprint(hash) ? s : null;
 }
 
 // ---- cashier app devices ----

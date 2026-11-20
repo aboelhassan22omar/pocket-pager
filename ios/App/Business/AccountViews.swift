@@ -327,7 +327,7 @@ struct SignupView: View {
             .background(Theme.background, in: RoundedRectangle(cornerRadius: 12))
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: "gift").foregroundStyle(Theme.accent)
-                Text("جرّب \(account.trialDays) أيام ببلاش. من غير فيزا ولا دفع. بعدها تشترك من الموقع لو عجبك.")
+                Text("حسابك بيبدأ بتجربة \(account.trialDays) أيام، من غير أي بيانات دفع.")
                     .font(.subheadline).foregroundStyle(Theme.text)
             }
             .padding(14)
@@ -459,7 +459,7 @@ struct RestaurantReadyView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("مطعمك جاهز!").font(.title.bold()).foregroundStyle(Theme.text)
                         Text(result.trial ? "عندك \(result.trialDays) أيام ببلاش. فاضل 3 حاجات بسيطة وتبدأ تشتغل."
-                             : "الرقم ده جرّب قبل كده، فالفرع هيشتغل أول ما تشترك من الموقع.")
+                             : "الرقم ده جرّب قبل كده، فالفرع هيشتغل أول ما مدير حسابك في Aurexis يفعّله.")
                             .foregroundStyle(Theme.muted)
                     }
                 }
