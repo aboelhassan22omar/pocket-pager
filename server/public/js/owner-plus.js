@@ -43,18 +43,18 @@ export function planBannerHtml(data) {
       stopped: 'الخدمة متوقفة. كلّمنا.',
     }[data.stopped];
     return `<div class="plan-banner is-stop" role="alert">${icons.bell(22)}<div><strong>${esc(why)}</strong>
-      <span>${owner ? 'اشترك والفروع ترجع تشتغل في نفس اللحظة اللي الدفع يتأكد فيها.' : 'كلّم صاحب المطعم.'}</span></div>${cta}</div>`;
+      <span>${!owner ? 'كلّم صاحب المطعم.' : inStoreApp() ? 'كلّم مدير حسابك في Aurexis.' : 'اشترك والفروع ترجع تشتغل في نفس اللحظة اللي الدفع يتأكد فيها.'}</span></div>${cta}</div>`;
   }
   const trial = data.branches.find((b) => b.plan.status === 'trial');
   const waiting = data.branches.filter((b) => b.awaitingPayment);
   if (trial) {
     const days = trial.plan.daysLeft;
     return `<div class="plan-banner" role="status">${icons.gift(22)}<div><strong>${days <= 1 ? 'آخر يوم في التجربة المجانية' : `فاضل ${days} أيام في التجربة المجانية`}</strong>
-      <span>لو عجبك، اشترك قبل ما تخلص عشان العملاء مايتوقفوش.</span></div>${cta}</div>`;
+      ${inStoreApp() ? '' : '<span>لو عجبك، اشترك قبل ما تخلص عشان العملاء مايتوقفوش.</span>'}</div>${cta}</div>`;
   }
   if (waiting.length && owner) {
     return `<div class="plan-banner is-wait" role="status">${icons.store(22)}<div><strong>${waiting.length === 1 ? `فرع ${esc(waiting[0].name)} مستني الاشتراك` : `${waiting.length} فروع مستنية الاشتراك`}</strong>
-      <span>الفرع جاهز، وبيشتغل أول ما الاشتراك يتأكد.</span></div>${cta}</div>`;
+      <span>${inStoreApp() ? 'الفرع جاهز، وبيشتغل أول ما مدير حسابك في Aurexis يفعّله.' : 'الفرع جاهز، وبيشتغل أول ما الاشتراك يتأكد.'}</span></div>${cta}</div>`;
   }
   return '';
 }
@@ -134,7 +134,8 @@ export function openLinks(branch, { base, refresh }) {
 export function openAddBranch({ base, brandId, host, refresh, goBilling }) {
   const { form } = openForm({
     title: 'فرع جديد',
-    intro: 'الفرع بيتعمل على طول بلينكاته ورقمه السري، وبيبدأ يشتغل أول ما اشتراكه يتأكد.',
+    intro: inStoreApp() ? 'الفرع بيتعمل على طول بلينكاته ورقمه السري، وبيشتغل أول ما مدير حسابك في Aurexis يفعّله.'
+      : 'الفرع بيتعمل على طول بلينكاته ورقمه السري، وبيبدأ يشتغل أول ما اشتراكه يتأكد.',
     fields: [
       { name: 'name', label: 'اسم الفرع', placeholder: 'مثلًا: مدينة نصر', maxlength: 60, hint: 'اسم المنطقة غالبًا. العميل بيشوفه تحت اسم المطعم.' },
       {
