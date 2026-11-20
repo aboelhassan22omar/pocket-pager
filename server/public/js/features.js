@@ -16,6 +16,12 @@ const FORCED = 'مقفولة من الإدارة';
  */
 const FEATURES = [
   {
+    key: 'open', icon: 'store', title: 'الفرع بياخد طلبات',
+    text: 'اقفله مؤقتًا لو مش بتستقبل طلبات (زحمة، صيانة، إجازة). العملاء هيشوفوا إن الفرع مقفول.',
+    on: (b) => !b.paused,
+    body: (on) => ({ paused: !on }),
+  },
+  {
     key: 'delivery', icon: 'scooter', title: 'التوصيل',
     text: 'مناديبك بيوصّلوا الطلب، والعميل بيتابعه لحد بابه وموبايله بيرن لما يخرج.',
     on: (b) => b.delivery,

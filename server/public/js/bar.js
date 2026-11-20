@@ -700,11 +700,33 @@ function readLogoColorOnce(shop) {
   img.src = shop.logoUrl;
 }
 
+// ---------- the owner's messages, the branch paused, who is signed in ----------
+
+let announcements = [];
+function renderAnnouncements(list) {
+  announcements = list ?? [];
+  const box = $('announce');
+  const first = announcements[0];
+  box.hidden = !first;
+  if (!first) return;
+  const more = announcements.length > 1 ? `<span class="announce-more">${announcements.length - 1} رسالة كمان</span>` : '';
+  box.innerHTML = `<div class="announce-text"><strong>رسالة من الإدارة</strong><p>${esc(first.text)}</p>${more}</div>
+    <button class="btn btn-primary" type="button" data-read="${first.id}">تمام، قريتها</button>`;
+}
+
+function renderPaused(shop) {
+  $('paused-banner').hidden = !shop.paused;
+}
+
 function applyState(state) {
   syncClock(state.serverNow);
   applyTheme(document.documentElement, state.shop.theme);
   readLogoColorOnce(state.shop);
   renderPlan(state.plan);
+  renderPaused(state.shop);
+  renderAnnouncements(state.announcements);
+  $('staff-name').hidden = !state.staff;
+  $('staff-name').textContent = state.staff ? state.staff.name : '';
   renderCounter(state.counter);
   lateAfterMs = (state.shop.lateAfterMinutes ?? 10) * 60_000;
   drivers = state.drivers ?? [];
@@ -754,6 +776,14 @@ async function boot() {
     if (e.key === 'Escape' && !$('sheet').hidden) closeSheet();
   });
 
+  $('announce').addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-read]');
+    if (!btn) return;
+    btn.disabled = true;
+    await api(`${base}/announcements/${btn.dataset.read}/read`, { method: 'POST', body: {} }).catch(() => {});
+    renderAnnouncements(announcements.filter((a) => String(a.id) !== btn.dataset.read));
+  });
+
   staffEvents(
     shopId,
     {
@@ -772,11 +802,17 @@ async function boot() {
       drivers: (list) => {
         drivers = list;
       },
+      // A message from the owner (or one read on another screen of the branch).
+      announcements: (list) => {
+        if ((list ?? []).length > announcements.length) chime.play('order');
+        renderAnnouncements(list);
+      },
       shop: (shop) => {
         $('shop-name').textContent = shop.name;
         applyTheme(document.documentElement, shop.theme);
         lateAfterMs = (shop.lateAfterMinutes ?? 10) * 60_000;
         setModes(shop);
+        renderPaused(shop);
         renderCounter(lastCounter);
         renderGrid();
       },

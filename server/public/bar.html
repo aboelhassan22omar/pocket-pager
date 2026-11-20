@@ -22,6 +22,7 @@
     <header class="topbar">
       <span class="dot" id="dot" data-online="false" title="الاتصال"></span>
       <h1 id="shop-name"></h1>
+      <span class="staff-name" id="staff-name" hidden></span>
       <nav>
         <a class="icon-link" id="link-qr" href="#" aria-label="شاشة الكود" title="شاشة الكود"></a>
         <a class="icon-link" id="link-settings" href="#" aria-label="الإعدادات" title="الإعدادات"></a>
@@ -29,6 +30,8 @@
     </header>
 
     <p id="plan-banner" class="plan-banner" role="status" hidden></p>
+    <p id="paused-banner" class="plan-banner" data-plan="paused" role="status" hidden>الفرع مقفول مؤقتًا من الإدارة: العملاء مش بياخدوا أرقام ومفيش طلبات جديدة لحد ما يتفتح.</p>
+    <div id="announce" class="announce" role="alert" hidden></div>
     <p id="offline" class="plan-banner offline-banner" role="status" hidden></p>
 
     <main class="board">

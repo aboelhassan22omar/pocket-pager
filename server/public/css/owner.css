@@ -871,3 +871,57 @@
   color: var(--muted);
   cursor: pointer;
 }
+
+/* Messages to the branches */
+.pick-branches {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.pick-branches legend {
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.pick-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+  gap: 6px;
+}
+
+.pick-list[hidden] {
+  display: none;
+}
+
+.pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--r-control);
+  background: var(--bg);
+}
+
+.pick input {
+  accent-color: var(--accent);
+}
+
+.sent-list {
+  display: grid;
+  gap: 8px;
+}
+
+.sent-row {
+  padding: 10px 12px;
+  border-radius: var(--r-control);
+  background: var(--bg);
+}
+
+.sent-row p {
+  margin: 0 0 2px;
+  overflow-wrap: anywhere;
+}

@@ -243,6 +243,19 @@ export const BRANCH_MIGRATIONS = [
   ALTER TABLE branch_settings ADD COLUMN delivery_close_minutes INTEGER NOT NULL DEFAULT 60;
   `,
   },
+  // 16: the owner pauses a branch (no new numbers until it opens again), and cashiers each with
+  //     their own PIN (the branch PIN keeps working; a cashier's PIN opens the cashier screen only).
+  `
+  ALTER TABLE branch_settings ADD COLUMN paused INTEGER NOT NULL DEFAULT 0;
+  CREATE TABLE staff (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    pin_hash TEXT NOT NULL,
+    pin_sealed TEXT,
+    created_at INTEGER NOT NULL,
+    deleted_at INTEGER
+  );
+  `,
 ];
 
 export function openBranchDb(file, { backupFile } = {}) {

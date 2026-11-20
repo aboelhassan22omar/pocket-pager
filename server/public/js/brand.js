@@ -9,7 +9,7 @@ import { icons } from './icons.js';
 import { TEXT_DEFAULTS, TEXT_GROUPS, TEXT_MAX } from './texts.js';
 import { toast } from './staff.js';
 import {
-  inStoreApp, openAddBranch, openDeleteAccount, openLinks, openPassword, planBannerHtml, renderBilling, renderTeam, welcomeHtml,
+  inStoreApp, openAddBranch, openBroadcast, openStaff, openDeleteAccount, openLinks, openPassword, planBannerHtml, renderBilling, renderTeam, welcomeHtml,
 } from './owner-plus.js';
 import { api, esc, isCashierApp, isIOS, reloadOnNewVersion, shopIdFromPath } from './util.js';
 
@@ -177,6 +177,7 @@ function render() {
       extra: data.brand.selfServe ? '' : renewalHtml(b.plan, b.lastPayment),
       actions: `<button class="btn btn-sm btn-primary" data-act="links" data-branch="${esc(b.id)}" type="button">اللينكات والرقم السري</button>
         <button class="btn btn-sm" data-act="features" data-branch="${esc(b.id)}" type="button">الخصائص</button>
+        <button class="btn btn-sm" data-act="staff" data-branch="${esc(b.id)}" type="button">الكاشيرية</button>
         ${b.delivery ? `<button class="btn btn-sm" data-act="drivers" data-branch="${esc(b.id)}" type="button">المناديب</button>` : ''}
         ${owner ? `<button class="btn btn-sm btn-quiet" data-act="rename" data-branch="${esc(b.id)}" type="button">غيّر الاسم</button>` : ''}`,
     })).join('')}</div>`
@@ -720,6 +721,7 @@ async function boot() {
     const copyEl = e.target.closest('[data-copy-text]');
     if (copyEl) navigator.clipboard?.writeText(copyEl.dataset.copyText).then(() => toast('اللينك اتنسخ'), () => {});
   });
+  $('broadcast').addEventListener('click', () => openBroadcast({ base, branches: data.branches }).catch((err) => toast(err.message, 'error')));
   $('add-branch').addEventListener('click', () => openAddBranch({
     base, brandId, host: location.host, refresh, goBilling: data.brand.selfServe,
   }));
@@ -727,6 +729,10 @@ async function boot() {
     const el = e.target.closest('[data-act]');
     if (!el) return;
     const branch = data.branches.find((b) => b.id === el.dataset.branch);
+    if (el.dataset.act === 'staff') {
+      openStaff(branch, { base }).catch((err) => toast(err.message, 'error'));
+      return;
+    }
     if (el.dataset.act === 'links') {
       openLinks(branch, { base, refresh });
       return;

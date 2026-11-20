@@ -6,6 +6,7 @@ import {
   DEVICE_CLAIMS, hashDevice, loyaltyEnabled, loyaltyView, newDeviceToken, readDeviceToken, setDeviceCookie,
 } from '../loyalty.js';
 import { stoppedError, stopReason } from '../plans.js';
+import { PAUSED_TEXT } from './bar.js';
 import { createRateLimiter } from '../ratelimit.js';
 import { openSse } from '../sse.js';
 import { CLOSED_STATUSES, FEEDBACK_WINDOW_MS, OPEN_STATUSES } from '../store.js';
@@ -119,6 +120,8 @@ export default async function customerRoutes(app, { config, control, tenants, bu
         reply.header('retry-after', String(limit.retryAfter));
         throw new HttpError(429, 'محاولات كتير. استنى دقيقة وجرّب تاني');
       }
+      // Paused by its owner: no new numbers until it opens again.
+      if (req.ctx.store.getShop().paused) throw new HttpError(409, PAUSED_TEXT, { code: 'paused' });
       const { n, k, pick, canPick, receipt } = req.body ?? {};
       if (pick != null && pick !== 'new' && !PICK_RE.test(String(pick))) throw new HttpError(400, 'الرقم ده مش مظبوط', { field: 'pick' });
       if (receipt != null && !PICK_RE.test(String(receipt))) throw new HttpError(400, 'رقم الفاتورة مش مظبوط', { field: 'receipt' });

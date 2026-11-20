@@ -399,3 +399,108 @@ export function openPassword({ base }) {
 }
 
 export const daysBetween = (a, b) => Math.ceil((b - a) / DAY);
+
+// ---------- a branch's cashiers, each with their own PIN ----------
+
+export async function openStaff(branch, { base }) {
+  const url = `${base}/branches/${encodeURIComponent(branch.id)}/staff`;
+  let { staff } = await api(url);
+  const listHtml = () => (staff.length ? staff.map((s) => `
+      <div class="team-row">
+        <span class="team-avatar">${esc([...s.name][0] ?? '؟')}</span>
+        <div class="team-who"><strong>${esc(s.name)}</strong>
+          <span class="muted small">الرقم السري: <b class="num" dir="ltr">${esc(s.pin ?? '—')}</b></span></div>
+        <div class="team-actions">
+          <button class="btn btn-sm btn-quiet" type="button" data-staff-pin="${s.id}">رقم جديد</button>
+          <button class="btn btn-sm btn-danger" type="button" data-staff-delete="${s.id}">امسحه</button>
+        </div>
+      </div>`).join('') : '<p class="empty-note">لسه مفيش كاشيرية. ضيف أول واحد تحت.</p>');
+  const { form } = openForm({
+    title: `كاشيرية ${branch.name}`,
+    intro: 'كل كاشير ليه رقم سري لوحده بيفتح بيه شاشة الكاشير، واسمه بيظهر فوق. الرقم السري بتاع الفرع شغال برضه، وهو بس اللي بيفتح الإعدادات.',
+    fields: [
+      { type: 'html', html: `<div class="team-list" id="staff-list">${listHtml()}</div>` },
+      { type: 'heading', label: 'كاشير جديد' },
+      { name: 'name', label: 'اسمه', maxlength: 60, placeholder: 'مثلًا: منى', hint: 'بيظهر فوق شاشة الكاشير وهو داخل.' },
+      { name: 'pin', label: 'رقمه السري (اختياري)', inputmode: 'numeric', dir: 'ltr', maxlength: 8, hint: 'من 4 لـ 8 أرقام. سيبه فاضي ونعمله لك.' },
+    ],
+    submit: 'ضيفه',
+    onSubmit: async (v) => {
+      const res = await api(url, { method: 'POST', body: { name: v.name ?? '', pin: v.pin ?? '' } });
+      staff = res.staff;
+      form.querySelector('#staff-list').innerHTML = listHtml();
+      form.elements.name.value = '';
+      form.elements.pin.value = '';
+      toast(`اتضاف. رقمه السري ${res.added.pin}`);
+      return true;
+    },
+  });
+  form.addEventListener('click', async (e) => {
+    const pinBtn = e.target.closest('[data-staff-pin]');
+    const delBtn = e.target.closest('[data-staff-delete]');
+    if (!pinBtn && !delBtn) return;
+    try {
+      if (pinBtn) {
+        staff = (await api(`${url}/${pinBtn.dataset.staffPin}/pin`, { method: 'POST', body: {} })).staff;
+        toast('اتعمله رقم سري جديد، والقديم بطل يشتغل');
+      } else {
+        staff = (await api(`${url}/${delBtn.dataset.staffDelete}/delete`, { method: 'POST', body: {} })).staff;
+        toast('اتمسح، وخرج من شاشة الكاشير');
+      }
+      form.querySelector('#staff-list').innerHTML = listHtml();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  });
+}
+
+// ---------- a message to the cashier screens ----------
+
+export async function openBroadcast({ base, branches }) {
+  let { announcements } = await api(`${base}/announcements`);
+  const live = branches.filter((b) => !b.deletedAt);
+  const name = (id) => live.find((b) => b.id === id)?.name ?? id;
+  const sentHtml = () => (announcements.length ? announcements.slice(0, 6).map((a) => {
+    const to = a.branchIds ?? live.map((b) => b.id);
+    const read = to.filter((id) => a.reads[id]);
+    const where = a.branchIds ? to.map(name).map(esc).join('، ') : 'كل الفروع';
+    return `<div class="sent-row"><p>${esc(a.text)}</p>
+      <span class="muted small">${where} · قرأها ${read.length} من ${to.length}${a.expiresAt < Date.now() ? ' · خلصت' : ''}</span></div>`;
+  }).join('') : '<p class="muted small">لسه مابعتش رسايل.</p>');
+  const { form } = openForm({
+    title: 'رسالة للفروع',
+    intro: 'بتظهر فوق شاشة الكاشير في الفروع اللي تختارها، لحد ما حد يدوس «تمام، قريتها». وإنت بتشوف مين قرأها.',
+    fields: [
+      { name: 'text', label: 'الرسالة', type: 'textarea', maxlength: 280, placeholder: 'مثلًا: العرض الجديد يبدأ بكرة، اسألوا كل عميل عن الكرواسون' },
+      {
+        type: 'html',
+        html: `<fieldset class="pick-branches"><legend>تروح لمين؟</legend>
+          <label class="toggle-row"><span>كل الفروع</span><input class="switch" type="checkbox" name="all" checked></label>
+          <div class="pick-list" hidden>${live.map((b) => `<label class="pick"><input type="checkbox" name="b" value="${esc(b.id)}" checked> ${esc(b.name)}</label>`).join('')}</div>
+        </fieldset>`,
+      },
+      {
+        name: 'days', label: 'تفضل ظاهرة قد إيه لو محدش قرأها؟', type: 'select', value: '3',
+        options: [{ value: '1', label: 'يوم' }, { value: '3', label: '3 أيام' }, { value: '7', label: 'أسبوع' }],
+      },
+      { type: 'heading', label: 'آخر رسايل', hint: '«قرأها» يعني حد في الفرع داس «تمام».' },
+      { type: 'html', html: `<div id="sent-list" class="sent-list">${sentHtml()}</div>` },
+    ],
+    submit: 'ابعت',
+    onSubmit: async (v) => {
+      const all = form.elements.all.checked;
+      const ids = [...form.querySelectorAll('input[name="b"]:checked')].map((i) => i.value);
+      const res = await api(`${base}/announcements`, {
+        method: 'POST', body: { text: v.text ?? '', days: Number(v.days), branchIds: all ? null : ids },
+      });
+      announcements = res.announcements;
+      form.querySelector('#sent-list').innerHTML = sentHtml();
+      form.elements.text.value = '';
+      toast('الرسالة اتبعتت');
+      return true;
+    },
+  });
+  form.elements.all.addEventListener('change', (e) => {
+    form.querySelector('.pick-list').hidden = e.target.checked;
+  });
+}

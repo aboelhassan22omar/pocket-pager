@@ -122,6 +122,7 @@ export const barShop = (shop) => ({
   orderQr: Boolean(shop.order_qr),
   orderShare: shop.order_share == null ? true : Boolean(shop.order_share),
   manualNumbers: Boolean(shop.manual_numbers),
+  paused: Boolean(shop.paused),
   // Delivery by the branch's own drivers («توصيل جديد» on the cashier screen).
   delivery: Boolean(shop.delivery),
   deliveryCloseMinutes: shop.delivery_close_minutes ?? 60,
