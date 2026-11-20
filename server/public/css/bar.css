@@ -529,8 +529,9 @@
 /* The branch paused by its owner: as loud as a stop, it changes what the counter can do. */
 .plan-banner[data-plan='paused'] {
   border-color: transparent;
-  background: var(--danger);
-  color: var(--on-danger);
+  /* A deeper red than --danger: white small text on it reads at 6.5:1 (AA). */
+  background: #a8352d;
+  color: #fff;
 }
 
 /* The owner's message: on top of the orders until someone taps «تمام، قريتها». */
