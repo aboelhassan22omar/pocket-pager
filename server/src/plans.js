@@ -13,6 +13,7 @@ export const FEATURES = ['review', 'loyalty', 'promo'];
  * suspended_manual  -> suspended
  * paid_until set    -> active until paid_until, past_due for 3 more days, then suspended
  * trial_ends_at set -> trial until then, then suspended
+ * awaiting_payment  -> suspended (a branch added after the free trial, until its first payment)
  * neither           -> active (branches migrated from v1: no expiry until a first payment)
  */
 export function effectivePlan(branch, now = Date.now()) {
@@ -28,6 +29,7 @@ export function effectivePlan(branch, now = Date.now()) {
     if (now < branch.trial_ends_at) return { status: 'trial', until: branch.trial_ends_at };
     return { status: 'suspended', reason: 'trial_ended', until: null };
   }
+  if (branch.awaiting_payment) return { status: 'suspended', reason: 'awaiting_payment', until: null };
   return { status: 'active', until: null };
 }
 
@@ -48,6 +50,7 @@ export const canClaim = (branch, now = Date.now()) => effectivePlan(branch, now)
 export const STOPPED_CODE = 'branch_stopped';
 export const STOP_MESSAGES = {
   trial_ended: 'التجربة المجانية خلصت',
+  awaiting_payment: 'الفرع ده مستني الاشتراك',
   unpaid: 'الاشتراك خلص',
   stopped: 'الخدمة متوقفة',
 };
@@ -61,7 +64,7 @@ export function stopReason(branch, now = Date.now()) {
   if (branch.deleted_at) return branch.deleted_reason === 'trial_ended' ? 'trial_ended' : 'stopped';
   const plan = effectivePlan(branch, now);
   if (plan.status !== 'suspended') return null;
-  return plan.reason === 'trial_ended' || plan.reason === 'unpaid' ? plan.reason : 'stopped';
+  return ['trial_ended', 'unpaid', 'awaiting_payment'].includes(plan.reason) ? plan.reason : 'stopped';
 }
 
 /**
@@ -71,7 +74,7 @@ export function stopReason(branch, now = Date.now()) {
 export function brandStopReason(branches, now = Date.now()) {
   const reasons = branches.map((b) => stopReason(b, now));
   if (!reasons.length || reasons.includes(null)) return null;
-  return ['unpaid', 'trial_ended'].find((r) => reasons.includes(r)) ?? 'stopped';
+  return ['unpaid', 'trial_ended', 'awaiting_payment'].find((r) => reasons.includes(r)) ?? 'stopped';
 }
 
 /**

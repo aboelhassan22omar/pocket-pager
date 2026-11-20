@@ -62,6 +62,15 @@ export function loadConfig(env = process.env) {
     // scrypt hash (node src/cli.js hash-password) for /super; empty = super dashboard disabled
     superPasswordHash: str(env.SUPER_PASSWORD_HASH, ''),
     trialDays: int(env.TRIAL_DAYS, 3, 0, 365),
+    // Self-serve sign-up at /signup (SIGNUP=off turns it off) and where subscriptions are paid.
+    // Every PAY_* is optional; the owner's «اشترك» shows the ones that are set.
+    signup: env.SIGNUP !== 'off',
+    signupRatePerHour: int(env.SIGNUP_RATE_PER_HOUR, 10, 1, 100000),
+    pay: {
+      instapay: str(env.PAY_INSTAPAY, ''),
+      wallet: str(env.PAY_WALLET, ''),
+      whatsapp: str(env.PAY_WHATSAPP, ''),
+    },
     // Optional weekly owner summary. Off unless SMTP_HOST is set.
     smtp: {
       host: str(env.SMTP_HOST, ''),

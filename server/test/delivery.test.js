@@ -92,6 +92,10 @@ describe('delivery over HTTP', () => {
       owners[brand] = client(server.url);
       await owners[brand].post('/api/brand/login', { username: `${brand}.owner`, password: `${brand}-owner-pass` });
     }
+    // New branches start with delivery on; these start from off, as older branches do.
+    for (const [brand, id] of [['dlva', 'dlva-a'], ['dlva', 'dlva-b'], ['dlvb', 'dlvb-a']]) {
+      await owners[brand].post(`/api/brand/${brand}/branches/${id}/settings`, { delivery: false });
+    }
     bar = client(server.url);
     await bar.post('/api/bar/login', { shopId: 'dlva-a', pin: '1234' });
     barB = client(server.url);
@@ -101,7 +105,7 @@ describe('delivery over HTTP', () => {
 
   const drivers = (brand, branch) => `/api/brand/${brand}/branches/${branch}/drivers`;
 
-  test('owner: delivery is off by default; turning it on and the close time are checked', async () => {
+  test('owner: delivery turned off, then on again; turning it on and the close time are checked', async () => {
     const view = (await owners.dlva.get('/api/brand/dlva/overview')).data.branches.find((b) => b.id === 'dlva-a');
     assert.deepEqual([view.delivery, view.deliveryCloseMinutes], [false, 60]);
     const settings = (body) => owners.dlva.post('/api/brand/dlva/branches/dlva-a/settings', body);

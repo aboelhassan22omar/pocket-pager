@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { verifyPin } from '../auth.js';
+import { passwordFields, pinFields, PIN_RE, verifyPin } from '../auth.js';
 import { analyticsCsv, brandAnalytics, brandOverview } from '../aggregate.js';
-import { appView, brandAppDir, ownerAppView } from '../apps.js';
+import { appKeyOf, appView, brandAppDir, ownerAppView } from '../apps.js';
 import { DEFAULT_RING } from '../../public/js/chime.js';
 import { cleanTexts } from '../../public/js/texts.js';
 import { channels } from '../bus.js';
@@ -16,7 +16,14 @@ import {
 } from '../ring.js';
 import { DELIVERY_CLOSE_MINUTES, DRIVER_NAME_MAX, SHOP_ID_RE } from '../store.js';
 import { OWNER_COOKIE, requireJson, requireOwner, setOwnerSession } from '../sessions.js';
-import { brandStopReason, FEATURES, stoppedError } from '../plans.js';
+import { brandStopReason, FEATURES, planView, stoppedError } from '../plans.js';
+import { MAX_BRANCHES, MONTH_OPTIONS, quote } from '../../public/js/pricing.js';
+import { provisionBranch } from '../provision.js';
+import { randomId } from '../util.js';
+import { unseal } from '../vault.js';
+import {
+  accountPhone, checkNewPassword, cleanPersonName, cleanSlug, newPin, phoneTaken,
+} from './account.js';
 import { parsePlaceId } from '../upgrades.js';
 import { parseGoogleReviewUrl, sniffImage } from './bar.js';
 import { cleanBranchName } from './super.js';
@@ -142,28 +149,48 @@ export default async function brandRoutes(app, deps) {
   await app.register(async (b) => {
     b.addHook('onRequest', async (req) => {
       req.owner = requireOwner(req, deps, req.params.brand);
-      // None of the brand's branches works any more: the owner page shows only why.
-      const stopped = brandStopReason(control.branchesOfBrand(req.params.brand));
-      if (stopped) throw stoppedError(stopped);
+      // A branch manager: that one branch only. null = the brand's owner (every branch).
+      req.scope = req.owner.branch_id ?? null;
+      const mine = control.branchesOfBrand(req.params.brand).filter((br) => !req.scope || br.id === req.scope);
+      // None of the brand's branches works any more: the owner page shows only why. A brand
+      // that signed itself up still opens, so its owner can subscribe (the page leads with that).
+      const stopped = brandStopReason(mine);
+      if (stopped && !control.getBrand(req.params.brand)?.self_serve) throw stoppedError(stopped);
       if (req.method !== 'GET' && isDemo(req.params.brand)) throw new HttpError(403, DEMO_LOCKED);
       const url = req.url.split('?')[0];
       requireJson(req, url.endsWith('/promo-image') ? IMAGE_TYPES : url.endsWith('/ring-file') ? AUDIO_TYPES : []);
     });
 
-    // A branch of THIS brand, or 404 (never reveals other brands' branches).
+    // A branch of THIS brand (and the manager's own), or 404 (never reveals other branches).
     function ownBranch(req) {
       const branch = control.getBranch(req.params.branch);
       if (!branch || branch.brand_id !== req.params.brand || branch.deleted_at) throw new HttpError(404, 'الفرع ده مش موجود');
+      if (req.scope && branch.id !== req.scope) throw new HttpError(404, 'الفرع ده مش موجود');
       return tenants.resolve(branch.id);
     }
 
-    const ownerView = (o) => ({ username: o.username, email: o.email ?? null, phone: o.phone ?? null });
+    // Brand-wide things (new branches, managers, the subscription, the brand's sound and words).
+    function ownerOnly(req) {
+      if (req.scope) throw new HttpError(403, 'دي لصاحب المطعم بس');
+    }
 
-    b.get('/overview', async (req) => ({
-      ...brandOverview(deps, req.params.brand),
-      owner: ownerView(req.owner),
-      demo: isDemo(req.params.brand),
-    }));
+    const ownerView = (o) => ({
+      username: o.username, name: o.name ?? null, email: o.email ?? null, phone: o.phone ?? null,
+      role: o.branch_id ? 'manager' : 'owner', branchId: o.branch_id ?? null,
+    });
+
+    b.get('/overview', async (req) => {
+      const overview = brandOverview(deps, req.params.brand, Date.now(), { branchId: req.scope });
+      const mine = control.branchesOfBrand(req.params.brand).filter((br) => !br.deleted_at && (!req.scope || br.id === req.scope));
+      return {
+        ...overview,
+        owner: ownerView(req.owner),
+        demo: isDemo(req.params.brand),
+        // Why nothing works (a self-serve brand still opens its page, to subscribe).
+        stopped: brandStopReason(mine),
+        pendingBilling: req.scope ? null : control.billingRequestsOfBrand(req.params.brand).find((r) => r.status === 'pending') ?? null,
+      };
+    });
 
     // The owner's own email and phone (both optional; empty clears).
     b.post('/account', async (req) => {
@@ -182,11 +209,13 @@ export default async function brandRoutes(app, deps) {
       const days = (Date.parse(to) - Date.parse(from)) / 86_400_000;
       if (days < 0) throw new HttpError(400, 'تاريخ البداية لازم يكون قبل النهاية', { field: 'to' });
       if (days > 365) throw new HttpError(400, 'أقصى فترة سنة', { field: 'from' });
-      if (branch) {
-        const b = control.getBranch(branch);
+      // A manager's report is their branch's, whatever was asked.
+      const branchId = req.scope ?? (branch || null);
+      if (branchId) {
+        const b = control.getBranch(branchId);
         if (!b || b.brand_id !== req.params.brand) throw new HttpError(404, 'الفرع ده مش موجود');
       }
-      return brandAnalytics(deps, req.params.brand, { from, to, branchId: branch || null });
+      return brandAnalytics(deps, req.params.brand, { from, to, branchId });
     }
 
     b.get('/analytics', async (req) => analyticsQuery(req));
@@ -206,7 +235,10 @@ export default async function brandRoutes(app, deps) {
         actor: `owner:${req.owner.id}`, action, brandId: req.params.brand, branchId: ctx.branch.id, detail, ip: req.ip,
       });
       const fields = {};
-      if ('name' in body) fields.name = cleanBranchName(body.name);
+      if ('name' in body) {
+        ownerOnly(req);
+        fields.name = cleanBranchName(body.name);
+      }
       // This branch's Google review link: a normal review link (g.page/r/…/review, maps.app.goo.gl/…)
       // or a place id. Each branch keeps its own; empty clears it.
       if ('googlePlaceId' in body) {
@@ -292,7 +324,22 @@ export default async function brandRoutes(app, deps) {
 
     // ---- cashier app: the download link to pass on, and the devices it is installed on ----
 
-    b.get('/app', async (req) => appView(deps, control.getBrand(req.params.brand)));
+    b.get('/app', async (req) => {
+      const view = appView(deps, control.getBrand(req.params.brand));
+      return req.scope ? { ...view, devices: view.devices.filter((d) => d.branchId === req.scope) } : view;
+    });
+
+    // The owner turns the cashier-app download on by themselves (a password is made for them).
+    b.post('/app/enable', async (req) => {
+      ownerOnly(req);
+      const brand = control.getBrand(req.params.brand);
+      if (!brand.app_password_hash) {
+        control.setAppPassword(brand.id, await passwordFields(config.cookieSecret, randomId(6)));
+        control.audit({ actor: `owner:${req.owner.id}`, action: 'app.password', brandId: brand.id, ip: req.ip });
+      }
+      appKeyOf(control, brand.id);
+      return appView(deps, control.getBrand(brand.id));
+    });
 
     // What customers read, in the brand's own words (empty = the default sentence).
     // ---- the customers' ring: a tone of the library, or the brand's own sound ----
@@ -301,6 +348,7 @@ export default async function brandRoutes(app, deps) {
 
     // A tone of the library (and the brand's own sound, if any, goes).
     b.post('/ring', async (req) => {
+      ownerOnly(req);
       const tone = req.body?.tone;
       if (!RING_IDS.has(tone)) throw new HttpError(400, 'الرنة دي مش موجودة', { field: 'tone' });
       const saved = control.setBrandRing(req.params.brand, tone === DEFAULT_RING ? null : { tone, file: null });
@@ -311,6 +359,7 @@ export default async function brandRoutes(app, deps) {
 
     // The brand's own sound (mp3, wav, ogg, m4a, webm), up to 600 KB.
     b.post('/ring-file', async (req) => {
+      ownerOnly(req);
       if (Buffer.isBuffer(req.body) && req.body.length > RING_FILE_MAX_BYTES) {
         throw new HttpError(413, 'ملف الرنة لازم يكون أقل من 600 كيلوبايت', { field: 'ringFile' });
       }
@@ -329,6 +378,7 @@ export default async function brandRoutes(app, deps) {
 
     b.get('/texts', async (req) => ({ texts: control.brandTexts(req.params.brand) }));
     b.post('/texts', async (req) => {
+      ownerOnly(req);
       const { texts, error, field } = cleanTexts(req.body?.texts);
       if (error) throw new HttpError(400, error, { field });
       const saved = control.setBrandTexts(req.params.brand, texts);
@@ -341,7 +391,8 @@ export default async function brandRoutes(app, deps) {
 
     function ownDevice(req) {
       const device = control.getDevice(req.params.device);
-      if (!device || device.brand_id !== req.params.brand || device.revoked_at) throw new HttpError(404, 'الجهاز ده مش موجود');
+      const outside = !device || device.brand_id !== req.params.brand || (req.scope && device.branch_id !== req.scope);
+      if (outside || device.revoked_at) throw new HttpError(404, 'الجهاز ده مش موجود');
       return device;
     }
     const deviceAudit = (req, device, action, detail) => control.audit({
@@ -362,6 +413,159 @@ export default async function brandRoutes(app, deps) {
       const device = ownDevice(req);
       control.revokeDevice(device.id);
       deviceAudit(req, device, 'device.revoke', { name: device.name });
+      return { ok: true };
+    });
+
+    // ---- the branch's cashier PIN: the owner (or its manager) changes it ----
+
+    b.post('/branches/:branch/pin', async (req) => {
+      const ctx = ownBranch(req);
+      const pin = typeof req.body?.pin === 'string' ? req.body.pin.trim() : '';
+      if (!PIN_RE.test(pin)) throw new HttpError(400, 'الرقم السري من 4 لـ 8 أرقام', { field: 'pin' });
+      ctx.store.updateShop(await pinFields(config.cookieSecret, pin));
+      control.audit({ actor: `owner:${req.owner.id}`, action: 'branch.pin_reset', brandId: req.params.brand, branchId: ctx.branch.id, ip: req.ip });
+      return { ok: true, pin };
+    });
+
+    // ---- a new branch: ready at once, working once its subscription is paid ----
+
+    b.post('/branches', async (req, reply) => {
+      ownerOnly(req);
+      const brandId = req.params.brand;
+      const body = req.body ?? {};
+      const live = control.branchesOfBrand(brandId).filter((br) => !br.deleted_at);
+      if (live.length >= MAX_BRANCHES) throw new HttpError(400, `أقصى عدد ${MAX_BRANCHES} فرع. كلّمنا لو محتاج أكتر`);
+      const name = cleanBranchName(body.name);
+      const slug = cleanSlug(body.slug, 'slug', { min: 2, max: 20 });
+      const id = `${brandId}-${slug}`;
+      if (id.length > 32) throw new HttpError(400, 'اسم الفرع في اللينك أقصر شوية', { field: 'slug' });
+      if (control.getBranch(id) || control.getBrand(id)) throw new HttpError(409, 'الاسم ده مستخدم، اختار غيره', { field: 'slug' });
+      const pin = body.pin ? String(body.pin).trim() : newPin();
+      if (!PIN_RE.test(pin)) throw new HttpError(400, 'الرقم السري من 4 لـ 8 أرقام', { field: 'pin' });
+      const shop = await provisionBranch(deps, { brandId, id, name, pin, awaitingPayment: true });
+      control.audit({ actor: `owner:${req.owner.id}`, action: 'branch.create', brandId, branchId: shop.id, detail: { name }, ip: req.ip });
+      return reply.code(201).send({ branchId: shop.id, pin, awaitingPayment: true });
+    });
+
+    // ---- branch managers: an account that sees one branch only ----
+
+    const managerView = (o) => ({
+      id: o.id, name: o.name ?? o.username, phone: o.phone ?? null, branchId: o.branch_id,
+      password: unseal(config.cookieSecret, o.password_sealed), lastLoginAt: o.last_login_at ?? null,
+    });
+    const managersOf = (brandId) => control.ownersOfBrand(brandId).filter((o) => o.branch_id).map(managerView);
+    function ownManager(req) {
+      const m = control.getOwner(Number(req.params.manager));
+      if (!m || m.brand_id !== req.params.brand || !m.branch_id) throw new HttpError(404, 'المدير ده مش موجود');
+      return m;
+    }
+
+    b.get('/managers', async (req) => {
+      ownerOnly(req);
+      return { managers: managersOf(req.params.brand) };
+    });
+
+    b.post('/managers', async (req, reply) => {
+      ownerOnly(req);
+      const brandId = req.params.brand;
+      const body = req.body ?? {};
+      const name = cleanPersonName(body.name);
+      const phone = accountPhone(body.phone);
+      const branch = control.getBranch(String(body.branchId ?? ''));
+      if (!branch || branch.brand_id !== brandId || branch.deleted_at) throw new HttpError(400, 'اختار الفرع', { field: 'branchId' });
+      if (phoneTaken(control, phone)) throw new HttpError(409, 'الرقم ده عليه حساب قبل كده', { field: 'phone' });
+      const password = body.password ? checkNewPassword(body.password) : randomId(6);
+      const username = phone.startsWith('20') ? `0${phone.slice(2)}` : phone;
+      if (control.ownerInBrand(brandId, username)) throw new HttpError(409, 'الرقم ده عليه حساب قبل كده', { field: 'phone' });
+      const fields = await passwordFields(config.cookieSecret, password);
+      const manager = control.createOwner({ brandId, branchId: branch.id, name, username, phone, ...fields });
+      control.audit({ actor: `owner:${req.owner.id}`, action: 'manager.create', brandId, branchId: branch.id, detail: { name }, ip: req.ip });
+      return reply.code(201).send({ manager: managerView(manager), managers: managersOf(brandId), loginUrl: `${config.publicUrl}/login` });
+    });
+
+    // A new password (signs the manager out everywhere).
+    b.post('/managers/:manager/password', async (req) => {
+      ownerOnly(req);
+      const m = ownManager(req);
+      const password = req.body?.password ? checkNewPassword(req.body.password) : randomId(6);
+      control.resetOwnerPassword(m.id, await passwordFields(config.cookieSecret, password));
+      control.audit({ actor: `owner:${req.owner.id}`, action: 'manager.reset', brandId: req.params.brand, branchId: m.branch_id, ip: req.ip });
+      return { managers: managersOf(req.params.brand) };
+    });
+
+    b.post('/managers/:manager/delete', async (req) => {
+      ownerOnly(req);
+      const m = ownManager(req);
+      control.deleteOwner(m.id);
+      control.audit({ actor: `owner:${req.owner.id}`, action: 'manager.delete', brandId: req.params.brand, branchId: m.branch_id, detail: { name: m.name }, ip: req.ip });
+      return { managers: managersOf(req.params.brand) };
+    });
+
+    // ---- the subscription: price for the brand's branches, and «اشترك» ----
+
+    const payMethods = () => Object.entries(config.pay).filter(([, v]) => v).map(([id, value]) => ({ id, value }));
+    const billingView = (brandId) => {
+      const branches = control.branchesOfBrand(brandId).filter((br) => !br.deleted_at);
+      return {
+        branches: branches.map((br) => ({ id: br.id, name: br.name, plan: planView(br), awaitingPayment: Boolean(br.awaiting_payment) })),
+        quotes: MONTH_OPTIONS.map((m) => quote(Math.max(1, branches.length), m)),
+        methods: payMethods(),
+        requests: control.billingRequestsOfBrand(brandId).slice(0, 5).map((r) => ({
+          id: r.id, months: r.months, amount: r.amount_egp, method: r.method, status: r.status, createdAt: r.created_at, branches: r.branch_ids.length,
+        })),
+      };
+    };
+
+    b.get('/billing', async (req) => {
+      ownerOnly(req);
+      return billingView(req.params.brand);
+    });
+
+    b.post('/billing', async (req, reply) => {
+      ownerOnly(req);
+      const brandId = req.params.brand;
+      const body = req.body ?? {};
+      const months = Number(body.months);
+      if (!MONTH_OPTIONS.includes(months)) throw new HttpError(400, 'اختار المدة', { field: 'months' });
+      const methods = payMethods().map((m) => m.id);
+      const method = methods.includes(body.method) ? body.method : 'call';
+      const reference = typeof body.reference === 'string' ? body.reference.trim().slice(0, 120) || null : null;
+      const branches = control.branchesOfBrand(brandId).filter((br) => !br.deleted_at);
+      if (!branches.length) throw new HttpError(400, 'مفيش فروع تشترك فيها');
+      if (control.billingRequestsOfBrand(brandId).some((r) => r.status === 'pending')) {
+        throw new HttpError(409, 'عندك طلب اشتراك لسه بنأكده. هنكلمك في أقرب وقت');
+      }
+      const q = quote(branches.length, months);
+      const request = control.createBillingRequest({
+        brandId, branchIds: branches.map((br) => br.id), months, amountEgp: q.total, method, reference,
+      });
+      control.audit({ actor: `owner:${req.owner.id}`, action: 'billing.request', brandId, detail: { id: request.id, months, amount: q.total, method }, ip: req.ip });
+      return reply.code(201).send(billingView(brandId));
+    });
+
+    // ---- the account itself ----
+
+    b.post('/account/password', async (req) => {
+      const { current, password } = req.body ?? {};
+      if (!(await verifyPin(String(current ?? ''), req.owner.password_hash))) {
+        throw new HttpError(400, 'كلمة السر الحالية غلط', { field: 'current' });
+      }
+      const fields = await passwordFields(config.cookieSecret, checkNewPassword(password));
+      const owner = control.resetOwnerPassword(req.owner.id, fields);
+      control.audit({ actor: `owner:${owner.id}`, action: 'owner.password', brandId: req.params.brand, ip: req.ip });
+      return { ok: true };
+    });
+
+    // Closes the account (App Store and Google Play ask for it): the brand and every branch stop
+    // and go to the trash, the owner is signed out. The super can bring it back on request.
+    b.post('/account/delete', async (req, reply) => {
+      ownerOnly(req);
+      if (!(await verifyPin(String(req.body?.password ?? ''), req.owner.password_hash))) {
+        throw new HttpError(400, 'كلمة السر غلط', { field: 'password' });
+      }
+      control.trashBrand(req.params.brand);
+      control.audit({ actor: `owner:${req.owner.id}`, action: 'account.delete', brandId: req.params.brand, ip: req.ip });
+      reply.clearCookie(OWNER_COOKIE, { path: '/' });
       return { ok: true };
     });
 

@@ -112,14 +112,25 @@ function branchSummary(deps, branch, now, { withPin = false, apps = {} } = {}) {
 }
 
 /** Branches of one brand (brand-owner dashboard). Trashed branches are not shown. */
-export function brandOverview(deps, brandId, now = Date.now()) {
+export function brandOverview(deps, brandId, now = Date.now(), { branchId = null } = {}) {
   const brand = deps.control.getBrand(brandId);
   if (!brand) return null;
   const apps = deviceCounts(deps, brandId);
-  const branches = deps.control.branchesOfBrand(brandId).filter((b) => !b.deleted_at).map((b) => branchSummary(deps, b, now, { apps }));
+  const { publicUrl } = deps.config;
+  // The owner (or the branch's manager) runs the branch: its links and cashier PIN are theirs.
+  const branches = deps.control.branchesOfBrand(brandId)
+    .filter((b) => !b.deleted_at && (!branchId || b.id === branchId))
+    .map((b) => ({
+      ...branchSummary(deps, b, now, { apps, withPin: true }),
+      awaitingPayment: Boolean(b.awaiting_payment),
+      urls: { bar: `${publicUrl}/bar/${b.id}`, qr: `${publicUrl}/qr/${b.id}`, settings: `${publicUrl}/settings/${b.id}`, customer: `${publicUrl}/s/${b.id}` },
+    }));
   // The dashboard wears the color of the brand's first branch that has one.
   const color = branches.find((b) => b.accentColor)?.accentColor;
-  return { brand: { id: brand.id, name: brand.name, theme: color ? brandTheme(color) : null }, branches };
+  return {
+    brand: { id: brand.id, name: brand.name, theme: color ? brandTheme(color) : null, selfServe: Boolean(brand.self_serve) },
+    branches,
+  };
 }
 
 /**

@@ -17,6 +17,7 @@ import { runWeeklySummaries } from './summary.js';
 import { createPackages } from './native/packages.js';
 import { purgeSandboxes, topUpDemo } from './demo.js';
 import { mailScreenAlerts } from './alerts.js';
+import accountRoutes from './routes/account.js';
 import adminRoutes from './routes/admin.js';
 import appRoutes from './routes/app.js';
 import barRoutes from './routes/bar.js';
@@ -126,6 +127,7 @@ export async function buildApp(config) {
   await app.register(barRoutes, ctx);
   await app.register(adminRoutes, ctx);
   await app.register(superRoutes, ctx);
+  await app.register(accountRoutes, ctx);
   await app.register(brandRoutes, ctx);
   await app.register(appRoutes, ctx);
   await app.register(demoRoutes, ctx);

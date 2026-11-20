@@ -33,7 +33,9 @@ describe('takeaway numbers typed by the cashier', () => {
     .post('/api/b/take-a/claim', { k, canPick: true, ...body }, { headers: { 'x-client-id': clientId } });
   const setManual = (on) => owner.post('/api/brand/take/branches/take-a/settings', { manualNumbers: on });
 
-  test('off by default: typing a receipt is refused', async () => {
+  test('on for a new branch; turned off, typing a receipt is refused', async () => {
+    assert.equal((await bar.get('/api/bar/take-a/state')).data.shop.manualNumbers, true, 'on by default');
+    assert.equal((await setManual(false)).status, 200);
     assert.equal((await typed('27')).status, 409);
   });
 

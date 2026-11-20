@@ -89,7 +89,47 @@ export default async function superRoutes(app, deps) {
       return ctx;
     }
 
-    s.get('/overview', async () => ({ ...superOverview(deps), backup: backupStatus(config) }));
+    s.get('/overview', async () => ({ ...superOverview(deps), backup: backupStatus(config), billing: pendingBilling() }));
+
+    // ---- subscription requests from the owners' «اشترك» ----
+
+    function pendingBilling() {
+      return control.pendingBillingRequests().map((r) => {
+        const owner = control.ownersOfBrand(r.brand_id).find((o) => !o.branch_id);
+        return {
+          id: r.id, brandId: r.brand_id, brandName: control.getBrand(r.brand_id)?.name ?? r.brand_id,
+          branches: r.branch_ids.length, months: r.months, amount: r.amount_egp, method: r.method,
+          reference: r.reference, createdAt: r.created_at, ownerName: owner?.name ?? owner?.username ?? null, phone: owner?.phone ?? null,
+        };
+      });
+    }
+
+    // The money arrived: every branch of the request is paid for its months, from the end of
+    // what it already has (a running trial or paid period is never cut short).
+    s.post('/billing/:id/confirm', async (req) => {
+      const r = control.getBillingRequest(Number(req.params.id));
+      if (!r || r.status !== 'pending') throw new HttpError(404, 'الطلب ده مش موجود أو اتأكد قبل كده');
+      const now = Date.now();
+      const live = r.branch_ids.map((id) => control.getBranch(id)).filter((br) => br && !br.deleted_at);
+      const share = live.length ? Math.floor(r.amount_egp / live.length) : 0;
+      for (const br of live) {
+        const from = Math.max(now, br.paid_until ?? 0, br.trial_ends_at && br.trial_ends_at > now ? br.trial_ends_at : 0);
+        control.recordPayment(br.id, {
+          amountEgp: share, periodStart: from, periodEnd: from + r.months * 30 * DAY_MS, note: `اشتراك #${r.id}`, actor: 'super',
+        });
+      }
+      control.decideBillingRequest(r.id, 'paid', 'super');
+      audit(req, 'billing.confirm', { brandId: r.brand_id, detail: { id: r.id, amount: r.amount_egp, months: r.months } });
+      return { billing: pendingBilling() };
+    });
+
+    s.post('/billing/:id/cancel', async (req) => {
+      const r = control.getBillingRequest(Number(req.params.id));
+      if (!r || r.status !== 'pending') throw new HttpError(404, 'الطلب ده مش موجود أو اتأكد قبل كده');
+      control.decideBillingRequest(r.id, 'cancelled', 'super');
+      audit(req, 'billing.cancel', { brandId: r.brand_id, detail: { id: r.id } });
+      return { billing: pendingBilling() };
+    });
 
     // "Back up now" (the nightly job runs by itself at 03:30).
     s.post('/backup', async (req) => {
