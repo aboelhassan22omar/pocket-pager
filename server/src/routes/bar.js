@@ -5,7 +5,7 @@ import { pinFields, PIN_RE, verifyPin } from '../auth.js';
 import { channels } from '../bus.js';
 import { staffCookieName } from '../cookies.js';
 import { egyptMobile, localMobile } from '../contact.js';
-import { canClaim, planView, trialEndedError, trialOver } from '../plans.js';
+import { planView, stoppedError, stopReason } from '../plans.js';
 import { deviceFromRequest, setStaffSession, verifyStaffSession } from '../sessions.js';
 import { HttpError } from '../errors.js';
 import { randomId } from '../util.js';
@@ -117,8 +117,10 @@ export default async function barRoutes(app, deps) {
   await app.register(async (bar) => {
     bar.addHook('onRequest', async (req) => {
       requireBar(req);
-      // Trial over: the cashier screen, its settings and its QR screen show only that.
-      if (trialOver(req.ctx.branch)) throw trialEndedError();
+      // A stopped branch (trial over, unpaid, stopped by hand): the cashier screen, its
+      // settings and its QR screen show only why.
+      const stopped = stopReason(req.ctx.branch);
+      if (stopped) throw stoppedError(stopped);
       const isLogo = req.routeOptions.url?.endsWith('/logo');
       // Every visitor shares the demo café: its settings stay as they are.
       const locked = ['/settings', '/pos/rotate'].some((path) => req.routeOptions.url?.endsWith(path));
@@ -209,7 +211,6 @@ export default async function barRoutes(app, deps) {
       const delivery = req.body?.type === 'delivery';
       if (delivery && !req.shop.delivery) throw new HttpError(409, 'التوصيل مش متفعّل للفرع ده');
       if (!delivery && !req.shop.order_qr) throw new HttpError(409, 'كود لكل طلب مش متفعّل للفرع ده');
-      if (!canClaim(req.ctx.branch)) throw new HttpError(402, 'الفرع متوقف. جدّد الاشتراك عشان ياخد طلبات');
       const { order, shop } = delivery
         ? service.createDelivery(req.ctx, egyptMobile(req.body?.phone, 'phone'))
         : service.createOrder(req.ctx);
@@ -228,7 +229,6 @@ export default async function barRoutes(app, deps) {
     // Takeaway numbers typed by the cashier: the receipt's number in, the takeaway number out.
     bar.post('/receipts', async (req) => {
       if (!req.shop.manual_numbers) throw new HttpError(409, 'أرقام التيكاواي اليدوي مش متفعّلة للفرع ده');
-      if (!canClaim(req.ctx.branch)) throw new HttpError(402, 'الفرع متوقف. جدّد الاشتراك عشان ياخد طلبات');
       const receipt = latinDigits(String(req.body?.receipt ?? '').trim());
       if (!RECEIPT_RE.test(receipt)) throw invalid('receipt', 'اكتب رقم الفاتورة بالأرقام بس');
       return service.manualReceipt(req.ctx, receipt);

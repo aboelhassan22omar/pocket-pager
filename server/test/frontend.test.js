@@ -11,7 +11,7 @@ import { reviewHtml } from '../public/js/review.js';
 import { mountPoweredBy, AUREXIS_URL, AUREXIS_MARK } from '../public/js/powered.js';
 import { shareMeta } from '../src/views.js';
 import {
-  api, ApiError, elapsedLabel, esc, isCashierApp, serverNow, showTrialEnded, SPLASH_MIN_MS, syncClock,
+  api, ApiError, elapsedLabel, esc, isCashierApp, serverNow, showStopped, SPLASH_MIN_MS, syncClock,
 } from '../public/js/util.js';
 import { etaText } from '../public/js/queue-text.js';
 
@@ -686,8 +686,8 @@ describe('a device clock that is off', () => {
   });
 });
 
-describe('free trial ended screen', () => {
-  // Just enough DOM for showTrialEnded.
+describe('stopped branch screen', () => {
+  // Just enough DOM for showStopped.
   function trialDoc() {
     const make = (tag) => ({
       tag, children: [], attrs: {}, className: '', textContent: '',
@@ -708,8 +708,8 @@ describe('free trial ended screen', () => {
 
   test('the whole page becomes the message alone, and the ring stops', () => {
     const doc = trialDoc();
-    assert.equal(showTrialEnded('التجربة المجانية خلصت', doc), true);
-    assert.equal(doc.body.className, 'trial-ended-page');
+    assert.equal(showStopped('التجربة المجانية خلصت', doc), true);
+    assert.equal(doc.body.className, 'stopped-page');
     assert.equal(doc.body.children.length, 1);
     const [main] = doc.body.children;
     assert.equal(main.attrs.role, 'alert');
@@ -717,17 +717,17 @@ describe('free trial ended screen', () => {
     assert.equal(main.children[1].textContent, 'التجربة المجانية خلصت');
     assert.equal(doc.title, 'التجربة المجانية خلصت');
     assert.equal(doc.paused.length, 1);
-    assert.equal(showTrialEnded('x', doc), true, 'once');
+    assert.equal(showStopped('x', doc), true, 'once');
     assert.equal(doc.body.children[0], main);
   });
 
   test('without a page (Node) api() still throws the 402 with its code', async () => {
     const realFetch = globalThis.fetch;
-    globalThis.fetch = async () => new Response(JSON.stringify({ error: 'التجربة المجانية خلصت', code: 'trial_ended' }), {
+    globalThis.fetch = async () => new Response(JSON.stringify({ error: 'الاشتراك خلص', code: 'branch_stopped', reason: 'unpaid' }), {
       status: 402, headers: { 'content-type': 'application/json' },
     });
     try {
-      await assert.rejects(api('/api/b/x'), (err) => err instanceof ApiError && err.status === 402 && err.data.code === 'trial_ended');
+      await assert.rejects(api('/api/b/x'), (err) => err instanceof ApiError && err.status === 402 && err.data.code === 'branch_stopped');
     } finally {
       globalThis.fetch = realFetch;
     }
@@ -737,6 +737,6 @@ describe('free trial ended screen', () => {
     for (const page of ['public/s.html', 'public/bar.html', 'public/qr.html', 'public/settings.html', 'public/brand.html']) {
       assert.match(read(page), /\/css\/base\.css/, page);
     }
-    assert.match(read('public/css/base.css'), /body\.trial-ended-page/);
+    assert.match(read('public/css/base.css'), /body\.stopped-page/);
   });
 });

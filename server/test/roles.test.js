@@ -7,7 +7,7 @@ import { hashPin } from '../src/auth.js';
 import { openControl } from '../src/control.js';
 import { DatabaseSync } from 'node:sqlite';
 import {
-  brandTrialOver, DAY_MS, effectivePlan, featureFlags, planView, trialOver,
+  brandStopReason, DAY_MS, effectivePlan, featureFlags, planView, stopReason,
 } from '../src/plans.js';
 import { seal, unseal } from '../src/vault.js';
 import { ADMIN_TOKEN, client, startServer } from './helpers.js';
@@ -56,25 +56,29 @@ describe('plan state machine', () => {
     assert.deepEqual(effectivePlan({ deleted_at: now, paid_until: at(30) }, now), { status: 'suspended', reason: 'deleted', until: null });
   });
 
-  test('trial over: before the hourly job trashes the branch and after; nothing else counts', () => {
-    assert.equal(trialOver({ trial_ends_at: at(-1) }, now), true);
-    assert.equal(trialOver({ trial_ends_at: at(1) }, now), false);
-    assert.equal(trialOver({ trial_ends_at: at(-1), paid_until: at(10) }, now), false, 'paid');
-    assert.equal(trialOver({ deleted_at: now, deleted_reason: 'trial_ended' }, now), true);
-    assert.equal(trialOver({ deleted_at: now, deleted_reason: 'manual', trial_ends_at: at(-1) }, now), false);
-    assert.equal(trialOver({ suspended_manual: 1, trial_ends_at: at(-1) }, now), false, 'stopped by the super');
+  test('why a branch is stopped: trial over (before the hourly job and after), unpaid, by hand', () => {
+    assert.equal(stopReason({ trial_ends_at: at(-1) }, now), 'trial_ended');
+    assert.equal(stopReason({ deleted_at: now, deleted_reason: 'trial_ended' }, now), 'trial_ended');
+    assert.equal(stopReason({ paid_until: at(-3.1) }, now), 'unpaid');
+    assert.equal(stopReason({ suspended_manual: 1, trial_ends_at: at(-1) }, now), 'stopped');
+    assert.equal(stopReason({ deleted_at: now, deleted_reason: 'manual' }, now), 'stopped');
+    assert.equal(stopReason({ deleted_at: now, deleted_reason: 'brand', paid_until: at(30) }, now), 'stopped');
+    assert.equal(stopReason({ trial_ends_at: at(1) }, now), null);
+    assert.equal(stopReason({ trial_ends_at: at(-1), paid_until: at(10) }, now), null, 'paid');
+    assert.equal(stopReason({ paid_until: at(-1) }, now), null, 'past_due still works');
+    assert.equal(stopReason({}, now), null);
   });
 
-  test('a brand is over when only ended trials (and branches trashed by hand) are left', () => {
-    const over = { trial_ends_at: at(-1) };
-    const trashedOver = { deleted_at: now, deleted_reason: 'trial_ended' };
+  test('the owner page stops once no branch works, naming what the owner can act on first', () => {
+    const trial = { trial_ends_at: at(-1) };
+    const unpaid = { paid_until: at(-10) };
+    const byHand = { deleted_at: now, deleted_reason: 'manual' };
     const live = { trial_ends_at: at(2) };
-    const trashed = { deleted_at: now, deleted_reason: 'manual' };
-    assert.equal(brandTrialOver([over, trashedOver], now), true);
-    assert.equal(brandTrialOver([trashedOver, trashed], now), true);
-    assert.equal(brandTrialOver([over, live], now), false, 'a live branch keeps the owner page');
-    assert.equal(brandTrialOver([trashed], now), false);
-    assert.equal(brandTrialOver([], now), false);
+    assert.equal(brandStopReason([trial, byHand], now), 'trial_ended');
+    assert.equal(brandStopReason([trial, unpaid, byHand], now), 'unpaid');
+    assert.equal(brandStopReason([byHand], now), 'stopped');
+    assert.equal(brandStopReason([trial, live], now), null, 'a working branch keeps the owner page');
+    assert.equal(brandStopReason([], now), null);
   });
 
   test('super can force a feature off over the owner toggle', () => {
@@ -243,17 +247,16 @@ describe('roles and plans', () => {
     assert.equal((await owners.x.get('/api/brand/brandx/overview')).status, 200);
   });
 
-  test('suspension: claims get 402, the bar shows it, resume restores', async () => {
+  test('suspension: the cashier and customers get only «الخدمة متوقفة»; resume restores', async () => {
     const staff = client(server.url);
     await staff.post('/api/bar/login', { shopId: 'brandx-a', pin: '1234' });
     const claim = async () => anon.post('/api/b/brandx-a/claim', { n: nonceOf((await staff.get('/api/bar/brandx-a/state')).data) });
 
     assert.equal((await claim()).status, 200);
     assert.equal((await superPost('/branches/brandx-a/suspend')).data.plan.status, 'suspended');
-    const blocked = await claim();
-    assert.equal(blocked.status, 402);
-    assert.equal(blocked.data.error, 'الخدمة متوقفة مؤقتًا، اسأل الكاشير');
-    assert.equal((await staff.get('/api/bar/brandx-a/state')).data.plan.status, 'suspended');
+    for (const res of [await staff.get('/api/bar/brandx-a/state'), await anon.post('/api/b/brandx-a/claim', { n: 'x' })]) {
+      assert.deepEqual([res.status, res.data.code, res.data.reason, res.data.error], [402, 'branch_stopped', 'stopped', 'الخدمة متوقفة']);
+    }
     assert.equal((await superPost('/branches/brandx-a/resume')).data.plan.status, 'trial');
     assert.equal((await claim()).status, 200);
   });
@@ -261,7 +264,8 @@ describe('roles and plans', () => {
   test('payments: active while paid, past_due for 3 days after, then suspended', async () => {
     const pay = (periodStart, periodEnd) => superPost('/branches/brandy-b/payments', { amountEgp: 300, periodStart, periodEnd });
     assert.equal((await pay(day(-40), day(-10))).data.plan.status, 'suspended', 'ended 10 days ago');
-    assert.equal((await anon.post('/api/b/brandy-b/claim', { n: 'x' })).status, 402);
+    const unpaid = await anon.get('/api/b/brandy-b');
+    assert.deepEqual([unpaid.status, unpaid.data.reason, unpaid.data.error], [402, 'unpaid', 'الاشتراك خلص']);
     const late = await pay(day(-31), day(-2));
     assert.equal(late.data.plan.status, 'past_due');
     assert.equal((await pay(day(0), day(30))).data.plan.status, 'active');
@@ -394,7 +398,8 @@ describe('roles and plans', () => {
     assert.equal(card.plan.reason, 'deleted');
     assert.ok(!(await owners.x.get('/api/brand/brandx/overview')).data.branches.some((b) => b.id === 'brandx-t'));
     assert.equal((await owners.x.post('/api/brand/brandx/branches/brandx-t/settings', { name: 'n' })).status, 404);
-    assert.equal((await claim()).status, 402);
+    const trashed = await anon.post('/api/b/brandx-t/claim', { n: 'x' });
+    assert.deepEqual([trashed.status, trashed.data.reason], [402, 'stopped']);
 
     assert.equal((await superPost('/branches/brandx-t/restore')).data.plan.status, 'trial');
     assert.equal((await claim()).status, 200);
@@ -440,7 +445,8 @@ describe('free trial ended', () => {
       db.close();
     }
   };
-  const isTrialEnded = (res) => res.status === 402 && res.data.code === 'trial_ended' && res.data.error === 'التجربة المجانية خلصت';
+  const isTrialEnded = (res) => res.status === 402 && res.data.code === 'branch_stopped' && res.data.reason === 'trial_ended'
+    && res.data.error === 'التجربة المجانية خلصت';
 
   before(async () => {
     server = await startServer({ SUPER_PASSWORD_HASH: await hashPin(SUPER_PASSWORD) });

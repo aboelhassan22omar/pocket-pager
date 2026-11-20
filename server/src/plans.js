@@ -43,27 +43,42 @@ export function planView(branch, now = Date.now()) {
 
 export const canClaim = (branch, now = Date.now()) => effectivePlan(branch, now).status !== 'suspended';
 
-/** The free trial ran out unpaid: before the hourly job trashes the branch, and after. */
-export function trialOver(branch, now = Date.now()) {
-  if (branch.deleted_at) return branch.deleted_reason === 'trial_ended';
-  return effectivePlan(branch, now).reason === 'trial_ended';
+// ---- a stopped branch: every page about it shows only why ----
+
+export const STOPPED_CODE = 'branch_stopped';
+export const STOP_MESSAGES = {
+  trial_ended: 'التجربة المجانية خلصت',
+  unpaid: 'الاشتراك خلص',
+  stopped: 'الخدمة متوقفة',
+};
+
+/**
+ * Why the branch is stopped, or null while it works:
+ * 'trial_ended' (before the hourly job trashes it, and after), 'unpaid' (past the grace days),
+ * 'stopped' (the super stopped or trashed it by hand).
+ */
+export function stopReason(branch, now = Date.now()) {
+  if (branch.deleted_at) return branch.deleted_reason === 'trial_ended' ? 'trial_ended' : 'stopped';
+  const plan = effectivePlan(branch, now);
+  if (plan.status !== 'suspended') return null;
+  return plan.reason === 'trial_ended' || plan.reason === 'unpaid' ? plan.reason : 'stopped';
 }
 
 /**
- * Nothing left in the brand but branches whose trial ran out (branches the super trashed by
- * hand don't count either way): its owner sees only that the trial ended.
+ * The owner's page stops once none of the brand's branches works. It says what the owner can
+ * act on first: a subscription to renew, then a trial that ended, then a stop by hand.
  */
-export function brandTrialOver(branches, now = Date.now()) {
-  const over = branches.filter((b) => trialOver(b, now));
-  return over.length > 0 && branches.every((b) => b.deleted_at || over.includes(b));
+export function brandStopReason(branches, now = Date.now()) {
+  const reasons = branches.map((b) => stopReason(b, now));
+  if (!reasons.length || reasons.includes(null)) return null;
+  return ['unpaid', 'trial_ended'].find((r) => reasons.includes(r)) ?? 'stopped';
 }
 
 /**
- * The one reply for anything about a branch (or brand) whose trial ran out: every page shows
- * this message alone, full screen (public/js/util.js), for the cashier, the owner and customers.
+ * The one reply for anything about a stopped branch (or brand): every page shows this message
+ * alone, full screen (public/js/util.js), for the cashier, the owner and customers alike.
  */
-export const TRIAL_ENDED = { status: 402, message: 'التجربة المجانية خلصت', code: 'trial_ended' };
-export const trialEndedError = () => new HttpError(TRIAL_ENDED.status, TRIAL_ENDED.message, { code: TRIAL_ENDED.code });
+export const stoppedError = (reason) => new HttpError(402, STOP_MESSAGES[reason], { code: STOPPED_CODE, reason });
 
 /** Effective feature flags: the owner's toggle, unless super forced it off. */
 export function featureFlags(branch) {

@@ -35,7 +35,7 @@ export async function api(path, { method = 'GET', body, raw, contentType, header
   }
   noteBuild(res.headers.get('x-build'));
   const data = (res.headers.get('content-type') ?? '').includes('json') ? await res.json() : null;
-  if (res.status === 402 && data?.code === TRIAL_ENDED_CODE && showTrialEnded(data.error)) {
+  if (res.status === 402 && data?.code === STOPPED_CODE && showStopped(data.error)) {
     // The page is over: nothing that called the server goes on (no error toasts, no retries).
     return new Promise(() => {});
   }
@@ -43,34 +43,35 @@ export async function api(path, { method = 'GET', body, raw, contentType, header
   return data;
 }
 
-// ---------- the free trial ended ----------
-// The server answers anything about a branch (or a brand) whose trial ran out with this code
-// (src/plans.js). Every page then shows that message alone, full screen, and nothing else.
+// ---------- a stopped branch ----------
+// The server answers anything about a stopped branch (or brand) with this code and the reason
+// in words (src/plans.js): «التجربة المجانية خلصت», «الاشتراك خلص» or «الخدمة متوقفة». Every
+// page then shows that message alone, full screen, and nothing else.
 
-export const TRIAL_ENDED_CODE = 'trial_ended';
-const TRIAL_ENDED_TEXT = 'التجربة المجانية خلصت';
-// The super may give the branch more days or a payment: the screen checks again now and then.
-const TRIAL_RECHECK_MS = 10 * 60_000;
+export const STOPPED_CODE = 'branch_stopped';
+const STOPPED_TEXT = 'الخدمة متوقفة';
+// The super may give the branch more days, a payment or a restart: the screen checks again now and then.
+const STOPPED_RECHECK_MS = 10 * 60_000;
 
 /** Replaces the whole page with the message. True once it's on screen. */
-export function showTrialEnded(message = TRIAL_ENDED_TEXT, doc = globalThis.document) {
+export function showStopped(message = STOPPED_TEXT, doc = globalThis.document) {
   if (!doc?.body) return false;
-  if (doc.body.classList.contains('trial-ended-page')) return true;
+  if (doc.body.classList.contains('stopped-page')) return true;
   for (const media of doc.querySelectorAll('audio, video')) media.pause();
   const main = doc.createElement('main');
-  main.className = 'trial-ended';
+  main.className = 'stopped-screen';
   main.setAttribute('role', 'alert');
   const mark = doc.createElement('img');
-  mark.className = 'trial-ended-mark';
+  mark.className = 'stopped-screen-mark';
   mark.src = '/img/brand/app-tile.svg';
   mark.alt = '';
   const title = doc.createElement('h1');
-  title.textContent = message || TRIAL_ENDED_TEXT;
+  title.textContent = message || STOPPED_TEXT;
   main.append(mark, title);
-  doc.body.className = 'trial-ended-page';
+  doc.body.className = 'stopped-page';
   doc.body.replaceChildren(main);
   doc.title = title.textContent;
-  if (doc === globalThis.document) setTimeout(() => globalThis.location.reload(), TRIAL_RECHECK_MS);
+  if (doc === globalThis.document) setTimeout(() => globalThis.location.reload(), STOPPED_RECHECK_MS);
   return true;
 }
 

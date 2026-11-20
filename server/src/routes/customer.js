@@ -5,7 +5,7 @@ import { channels } from '../bus.js';
 import {
   DEVICE_CLAIMS, hashDevice, loyaltyEnabled, loyaltyView, newDeviceToken, readDeviceToken, setDeviceCookie,
 } from '../loyalty.js';
-import { canClaim, trialEndedError, trialOver } from '../plans.js';
+import { stoppedError, stopReason } from '../plans.js';
 import { createRateLimiter } from '../ratelimit.js';
 import { openSse } from '../sse.js';
 import { CLOSED_STATUSES, FEEDBACK_WINDOW_MS, OPEN_STATUSES } from '../store.js';
@@ -91,8 +91,9 @@ export default async function customerRoutes(app, { config, control, tenants, bu
   await app.register(async (b) => {
     b.addHook('onRequest', async (req) => {
       req.ctx = tenants.resolve(req.params.branch);
-      // Trial over: the customer page shows only that (open orders included).
-      if (trialOver(req.ctx.branch)) throw trialEndedError();
+      // A stopped branch: the customer page shows only why (open orders included).
+      const stopped = stopReason(req.ctx.branch);
+      if (stopped) throw stoppedError(stopped);
     });
 
     function loadOrder(req, id) {
@@ -118,8 +119,6 @@ export default async function customerRoutes(app, { config, control, tenants, bu
         reply.header('retry-after', String(limit.retryAfter));
         throw new HttpError(429, 'محاولات كتير. استنى دقيقة وجرّب تاني');
       }
-      // Suspended or trial over: no new orders (open ones finish normally).
-      if (!canClaim(req.ctx.branch)) throw new HttpError(402, 'الخدمة متوقفة مؤقتًا، اسأل الكاشير');
       const { n, k, pick, canPick, receipt } = req.body ?? {};
       if (pick != null && pick !== 'new' && !PICK_RE.test(String(pick))) throw new HttpError(400, 'الرقم ده مش مظبوط', { field: 'pick' });
       if (receipt != null && !PICK_RE.test(String(receipt))) throw new HttpError(400, 'رقم الفاتورة مش مظبوط', { field: 'receipt' });

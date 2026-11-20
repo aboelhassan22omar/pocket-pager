@@ -559,9 +559,9 @@ body.is-ready .powered-by strong {
   color: #fff;
 }
 
-/* The free trial ended (util.js showTrialEnded): the message alone, on Pocket Pager's own look
+/* A stopped branch (util.js showStopped): the message alone, on Pocket Pager's own look
    whatever the branch's colours were. */
-body.trial-ended-page {
+body.stopped-page {
   --bg: #0d1324;
   --text: #f5f7fb;
   display: grid;
@@ -572,20 +572,20 @@ body.trial-ended-page {
   color: var(--text);
 }
 
-.trial-ended {
+.stopped-screen {
   display: grid;
   justify-items: center;
   gap: 20px;
   text-align: center;
 }
 
-.trial-ended-mark {
+.stopped-screen-mark {
   width: 72px;
   height: 72px;
   border-radius: 18px;
 }
 
-.trial-ended h1 {
+.stopped-screen h1 {
   margin: 0;
   font-size: var(--fs-2xl);
   font-weight: 700;
