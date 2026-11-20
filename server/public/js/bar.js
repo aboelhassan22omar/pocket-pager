@@ -670,7 +670,6 @@ async function refreshState() {
 }
 
 const PLAN_MESSAGE = {
-  suspended: () => 'الخدمة متوقفة مؤقتًا: العملاء مش هيقدروا ياخدوا أرقام جديدة. الطلبات المفتوحة بتكمل عادي. كلّم Aurexis.',
   past_due: (p) => `الاشتراك متأخر. الخدمة هتتوقف بعد ${p.daysLeft} يوم لو ما اتجددتش.`,
   trial: (p) => `فترة تجريبية: فاضل ${p.daysLeft} يوم.`,
 };
