@@ -16,7 +16,7 @@ export default async function pageRoutes(app, { config }) {
   }
 
   // Self-serve: sign up, sign in (owners and branch managers).
-  for (const name of ['signup', 'login']) {
+  for (const name of ['signup', 'login', 'welcome']) {
     const page = read(`${name}.html`);
     app.get(`/${name}`, (_req, reply) => sendHtml(reply, page));
   }

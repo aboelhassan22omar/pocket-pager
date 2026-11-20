@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ar" dir="rtl" class="pp" data-bs-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d1324">
+  <meta name="color-scheme" content="dark">
+  <meta name="robots" content="noindex">
+  <title>Pocket Pager</title>
+  <link rel="icon" href="/favicon.ico" sizes="48x48">
+  <link rel="icon" href="/img/brand/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/img/brand/apple-touch-icon-180.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="preload" href="/fonts/readex-pro-arabic-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/vendor/bootstrap/bootstrap.rtl.min.css">
+  <link rel="stylesheet" href="/css/bs-bridge.css">
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/pp-tokens.css">
+  <link rel="stylesheet" href="/css/auth.css">
+  <script type="module" src="/js/welcome.js"></script>
+</head>
+<!-- The store apps' first screen: what Pocket Pager does, in three pictures, then sign up or log in.
+     Nothing about prices: the apps sell nothing. -->
+<body class="auth welcome-app">
+  <header class="auth-top">
+    <div class="container-lg d-flex align-items-center gap-2">
+      <img src="/img/brand/lockup-on-dark.svg" alt="Pocket Pager" width="150" height="34">
+    </div>
+  </header>
+
+  <main class="container-lg auth-main">
+    <div class="auth-narrow">
+      <div class="slides" id="slides" aria-roledescription="شرائح" aria-live="polite">
+        <section class="slide" data-slide="0">
+          <span class="slide-art" data-icon="qr"></span>
+          <span class="slide-count">1 من 3</span>
+          <h1>عملاءك ياخدوا رقم من موبايلهم</h1>
+          <p>بيمسحوا الكود اللي عند الكاشير بالكاميرا، من غير ما ينزّلوا أي تطبيق.</p>
+        </section>
+        <section class="slide" data-slide="1" hidden>
+          <span class="slide-art" data-icon="check"></span>
+          <span class="slide-count">2 من 3</span>
+          <h1>الكاشير يدوس «جاهز»</h1>
+          <p>من شاشة الكاشير على أي تابلت أو كمبيوتر أو موبايل جنبه.</p>
+        </section>
+        <section class="slide" data-slide="2" hidden>
+          <span class="slide-art" data-icon="bell"></span>
+          <span class="slide-count">3 من 3</span>
+          <h1>موبايل العميل يرن</h1>
+          <p>حتى والشاشة مقفولة. ييجي ياخد طلبه، ومفيش زحمة قدّام الكاونتر.</p>
+        </section>
+      </div>
+      <div class="slide-dots" id="dots" role="tablist" aria-label="الشرائح">
+        <button type="button" role="tab" data-go="0" aria-label="1"></button>
+        <button type="button" role="tab" data-go="1" aria-label="2"></button>
+        <button type="button" role="tab" data-go="2" aria-label="3"></button>
+      </div>
+
+      <div class="welcome-actions">
+        <a class="btn btn-primary btn-block btn-go" href="/signup" id="start">ابدأ ببلاش 3 أيام</a>
+        <a class="btn btn-block" href="/login">عندي حساب، دخول</a>
+        <p class="hint text-center">إنت عميل مستني طلبك؟ امسح الكود اللي عند الكاشير بكاميرا موبايلك، ورقمك هيظهر على طول.</p>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

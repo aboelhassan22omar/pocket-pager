@@ -379,7 +379,12 @@ export function openDeleteAccount({ base }) {
     danger: true,
     onSubmit: async (v) => {
       await api(`${base}/account/delete`, { method: 'POST', body: { password: v.password ?? '' } });
-      location.href = '/';
+      try {
+        localStorage.removeItem('pp:brand');
+      } catch {
+        /* private mode */
+      }
+      location.href = inStoreApp() ? '/welcome' : '/';
     },
   });
 }

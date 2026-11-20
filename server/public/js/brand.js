@@ -453,6 +453,11 @@ function accountAction(act) {
     return;
   }
   if (act === 'logout') {
+    try {
+      localStorage.removeItem('pp:brand');
+    } catch {
+      /* private mode */
+    }
     api(`${base}/logout`, { method: 'POST' }).finally(() => location.reload());
     return;
   }

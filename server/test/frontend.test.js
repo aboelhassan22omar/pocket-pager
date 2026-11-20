@@ -147,7 +147,7 @@ describe('Powered by', () => {
 
 const ALL_HTML = fs.readdirSync(path.join(root, 'public')).filter((f) => f.endsWith('.html')).map((f) => `public/${f}`);
 const PRIVATE_LABEL = ['public/app.html', 'public/setup.html'];
-const PP_OWN = ['public/index.html', 'public/demo.html', 'public/super.html', 'public/privacy.html', 'public/signup.html', 'public/login.html'];
+const PP_OWN = ['public/index.html', 'public/demo.html', 'public/super.html', 'public/privacy.html', 'public/signup.html', 'public/login.html', 'public/welcome.html'];
 // PNG: width, height and colour type (2 = RGB, 6 = RGBA) from the IHDR chunk.
 const pngInfo = (p) => {
   const b = fs.readFileSync(p);

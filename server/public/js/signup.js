@@ -203,6 +203,11 @@ function eyeIcon(open) {
 // ---------- done ----------
 
 function showDone() {
+  try {
+    localStorage.setItem('pp:brand', result.brandId);
+  } catch {
+    /* private mode */
+  }
   form.hidden = true;
   $('steps').hidden = true;
   $('done').hidden = false;
@@ -212,7 +217,9 @@ function showDone() {
   $('to-dashboard').href = `/brand/${encodeURIComponent(result.brandId)}?welcome=1#branches`;
   $('done-lede').innerHTML = result.trial
     ? `عندك <strong>${esc(result.trialDays)} أيام ببلاش</strong>. فاضل 3 حاجات بسيطة وتبدأ تشتغل.`
-    : 'الرقم ده جرّب قبل كده، فالفرع هيشتغل أول ما تشترك من لوحة التحكم ← «الاشتراك».';
+    : /PocketPagerApp/.test(navigator.userAgent)
+      ? 'الرقم ده جرّب قبل كده، فالفرع هيشتغل أول ما مدير حسابك في Aurexis يفعّله.'
+      : 'الرقم ده جرّب قبل كده، فالفرع هيشتغل أول ما تشترك من لوحة التحكم ← «الاشتراك».';
   window.scrollTo({ top: 0 });
   $('h-done').focus?.();
 }
@@ -245,6 +252,9 @@ document.addEventListener('click', async (e) => {
     $('trial-line').textContent = days ? `وأول ${days} أيام ببلاش.` : '';
     $('trial-note').hidden = !days;
     $('trial-note').querySelector('strong').textContent = `جرّب ${days} أيام ببلاش.`;
+    if (/PocketPagerApp/.test(navigator.userAgent)) {
+      $('trial-note').lastElementChild.textContent = `حسابك بيبدأ بتجربة ${days} أيام، من غير أي بيانات دفع.`;
+    }
   } catch {
     /* the defaults on the page are fine */
   }

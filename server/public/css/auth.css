@@ -578,3 +578,92 @@
     animation: none;
   }
 }
+
+/* ---------- /welcome: the store apps' first screen ---------- */
+
+.welcome-app .auth-main {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100dvh - 70px);
+}
+
+.slides {
+  display: grid;
+  min-height: 21rem;
+  text-align: center;
+}
+
+.slide {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 10px;
+  animation: step-in 360ms var(--ease) both;
+}
+
+.slide-art {
+  display: grid;
+  place-items: center;
+  width: 140px;
+  height: 140px;
+  margin-bottom: 8px;
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--accent);
+}
+
+.slide-art .icon {
+  width: 60px;
+  height: 60px;
+  stroke-width: 1.6;
+}
+
+.slide-count {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.slide h1 {
+  margin: 0;
+  font-size: clamp(1.45rem, 6vw, 1.9rem);
+  font-weight: 700;
+  text-wrap: balance;
+}
+
+.slide p {
+  max-width: 24rem;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.slide-dots {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin: 18px 0 28px;
+}
+
+.slide-dots button {
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 99px;
+  background: var(--line-strong);
+  transition: width 240ms var(--ease), background-color 240ms var(--ease);
+}
+
+.slide-dots button[aria-selected='true'] {
+  width: 24px;
+  background: var(--accent);
+}
+
+.welcome-actions {
+  display: grid;
+  gap: 12px;
+}
+
+.welcome-actions .btn-go {
+  margin-inline-start: 0;
+}

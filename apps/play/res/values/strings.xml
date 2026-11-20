@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Pocket Pager</string>
+    <!-- The server the app opens; replaced in CI for a test server (build.sh SERVER=...). -->
+    <string name="server" translatable="false">https://pager.aurexis.cc</string>
+    <color name="navy">#0D1324</color>
+    <!-- Navy behind everything from the first frame: no white flash before the page draws. -->
+    <style name="Launch" parent="@android:style/Theme.DeviceDefault.NoActionBar">
+        <item name="android:windowBackground">@color/navy</item>
+        <item name="android:statusBarColor">@color/navy</item>
+        <item name="android:navigationBarColor">@color/navy</item>
+    </style>
+</resources>
