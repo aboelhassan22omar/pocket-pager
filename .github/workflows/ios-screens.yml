@@ -72,7 +72,7 @@ jobs:
           owner_api() { curl -fs -b "$RUNNER_TEMP/owner.txt" -c "$RUNNER_TEMP/owner.txt" -H 'content-type: application/json' "$@"; }
           xcrun simctl status_bar "$SIM" override --time "9:41" --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3
           xcrun simctl install "$SIM" "$APP"
-          brew tap wix/brew > /dev/null && brew install applesimutils > /dev/null
+          brew tap wix/brew > /dev/null && brew trust wix/brew > /dev/null && brew install applesimutils > /dev/null
           allow() { applesimutils --byId "$1" --bundle $A --setPermissions notifications=YES > /dev/null; }
           allow "$SIM"
 
