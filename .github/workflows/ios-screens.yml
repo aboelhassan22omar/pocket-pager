@@ -140,6 +140,21 @@ jobs:
           ilaunch -ppBranch review-cafe-maadi; ishot 03-branch
           ilaunch -ppTab 1; ishot 04-alerts
           ilaunch -ppTab 2; ishot 05-management 12
+      - name: Release build for devices (what the App Store gets)
+        working-directory: ios
+        run: |
+          set -euo pipefail
+          xcodebuild -project PocketPager.xcodeproj -scheme PocketPager -configuration Release             -destination 'generic/platform=iOS' -derivedDataPath "$RUNNER_TEMP/rel"             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build -quiet
+          app=$(find "$RUNNER_TEMP/rel/Build/Products/Release-iphoneos" -maxdepth 1 -name 'PocketPager.app')
+          plutil -extract CFBundleShortVersionString raw "$app/Info.plist" | tee /dev/stderr | grep -qx '1.2.0'
+          plutil -extract CFBundleVersion raw "$app/Info.plist" | grep -qx '202611211'
+          plutil -extract CFBundleIdentifier raw "$app/Info.plist" | grep -qx 'cc.aurexis.pager'
+          # The App Clip and the Live Activity widgets are still inside.
+          test -d "$app/AppClips/PocketPagerClip.app"
+          test -d "$app/PlugIns/PocketPagerWidget.appex"
+          test -d "$app/AppClips/PocketPagerClip.app/PlugIns/PocketPagerClipWidget.appex"
+          plutil -extract NSSupportsLiveActivities raw "$app/AppClips/PocketPagerClip.app/Info.plist" | grep -qx true
+          echo "Release app: 1.2.0 (202611211) with App Clip, widget and the Clip's Live Activity"
       - name: Server log
         if: always()
         run: tail -50 "$RUNNER_TEMP/server.log" || true
