@@ -42,5 +42,5 @@ $('slides').addEventListener('touchstart', () => clearInterval(timer), { once: t
 go(0);
 
 api('/api/signup/info').then((info) => {
-  if (info.trialDays) $('start').textContent = `ابدأ ببلاش ${info.trialDays} أيام`;
+  if (info.support) $('wa').href = `https://wa.me/${info.support}`;
 }).catch(() => {});

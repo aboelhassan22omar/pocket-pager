@@ -15,23 +15,8 @@ struct DashboardView: View {
     @Environment(\.requestReview) private var requestReview
 
     var body: some View {
+        // The tab bar below is the app's; the page brings its own header (pull down to refresh).
         VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                BrandTile(size: 30)
-                Text("لوحة التحكم").font(.headline).foregroundStyle(Theme.text)
-                Spacer()
-                Menu {
-                    Button { reloadToken += 1 } label: { Label("حدّث الصفحة", systemImage: "arrow.clockwise") }
-                    Button(role: .destructive) { confirmSignOut = true } label: { Label("خروج", systemImage: "rectangle.portrait.and.arrow.right") }
-                } label: {
-                    Image(systemName: "ellipsis.circle").font(.title3).foregroundStyle(Theme.text)
-                        .frame(width: 44, height: 44)
-                }
-                .accessibilityLabel("المزيد")
-            }
-            .padding(.horizontal, 14)
-            .background(Theme.background)
-
             DashboardWeb(url: PagerAPI.baseURL.appendingPathComponent("brand/\(brandId)"), reloadToken: reloadToken,
                          openOutside: { external = $0 },
                          // The page left for the home page: the account was closed or signed out.

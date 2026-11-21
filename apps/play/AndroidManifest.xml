@@ -1,13 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Pocket Pager on Google Play: the app for restaurant owners and branch managers.
-     It opens https://pager.aurexis.cc/welcome (what it does, sign up or log in), then the dashboard.
-     Nothing is sold in it (prices and the subscription stay on the website). Customers never need
-     it: they scan the cashier's code with the camera. -->
+     Native sign-in, branches, alerts (notifications) and account; the website's full dashboard
+     under «الإدارة». Accounts are made by Aurexis; nothing is sold in the app. Customers never
+     need it: they scan the cashier's code with the camera. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="cc.aurexis.pocketpager">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Alerts as notifications (Android 13+ asks), kept after a restart. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:label="@string/app_name"
@@ -30,5 +33,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".HomeActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density"
+            android:windowSoftInputMode="adjustResize" />
+        <service
+            android:name=".AlertJob"
+            android:permission="android.permission.BIND_JOB_SERVICE"
+            android:exported="false" />
     </application>
 </manifest>

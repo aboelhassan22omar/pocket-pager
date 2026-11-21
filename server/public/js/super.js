@@ -75,6 +75,14 @@ const PAY_NAME = { instapay: 'InstaPay', wallet: 'محفظة', whatsapp: 'وات
 
 function attentionItems() {
   const items = [];
+  // «اطلب حساب» from /signup: make the client in one step.
+  for (const r of overview.requests ?? []) {
+    items.push({
+      tone: 'alert',
+      text: `طلب حساب: ${r.name} · ${r.brand_name} · ${r.branches} ${r.branches === 1 ? 'فرع' : 'فروع'} · 0${String(r.phone).slice(2)}${r.note ? ` · «${r.note.slice(0, 60)}»` : ''}`,
+      act: 'request', id: String(r.id), label: 'اعمل الحساب',
+    });
+  }
   // Owners' «اشترك»: confirm once the money is in, and their branches work at once.
   for (const r of overview.billing ?? []) {
     const who = [r.ownerName, r.phone && `0${String(r.phone).slice(2)}`].filter(Boolean).join(' · ');
@@ -202,7 +210,27 @@ function ownerCredsHtml(brand) {
         ${owner.phone ? `<div><dt>التليفون</dt><dd dir="ltr"><a href="tel:${esc(owner.phone)}">${esc(owner.phone)}</a>${copyBtn(owner.phone)}</dd></div>` : ''}
       </dl>
       <button class="btn btn-sm" data-act="owner" data-id="${esc(brand.id)}" type="button">تعديل</button>
+      ${accountsHtml(brand)}
     </div>`;
+}
+
+/** Every account of the brand (the owner and branch managers), each with stop / resume. */
+function accountsHtml(brand) {
+  const branchName = (id) => brand.branches.find((b) => b.id === id)?.name ?? id;
+  return `<ul class="accounts">${brand.owners.map((o) => `
+    <li class="${o.disabled ? 'is-off' : ''}">
+      <span>${esc(o.name ?? o.username)} <span class="muted small">${o.branchId ? `مدير ${esc(branchName(o.branchId))}` : 'صاحب البراند'} · <span dir="ltr">${esc(o.username)}</span>${o.disabled ? ' · موقوف' : ''}</span></span>
+      <button class="link-btn" type="button" data-act="account-toggle" data-id="${o.id}" data-disabled="${o.disabled}">${o.disabled ? 'شغّل الحساب' : 'أوقف الحساب'}</button>
+    </li>`).join('')}</ul>`;
+}
+
+async function toggleAccount(id, disable) {
+  try {
+    await post(`/owners/${id}/disable`, { disabled: disable });
+    await done(disable ? 'الحساب اتوقف، وخرج من كل الأجهزة' : 'الحساب رجع يشتغل');
+  } catch (err) {
+    toast(err.message, 'error');
+  }
 }
 
 function pinLineHtml(b) {
@@ -477,6 +505,44 @@ async function enterBranch(id, page) {
     tab?.close();
     toast(err.message, 'error');
   }
+}
+
+/** A new client in one step: the brand, its first branch and the owner's account. */
+function newClient(request = null) {
+  openForm({
+    title: 'عميل جديد',
+    intro: 'البراند وأول فرع وحساب صاحبه مرة واحدة. في الآخر بتطلع رسالة جاهزة تبعتهاله على واتساب.',
+    fields: [
+      { name: 'brandName', label: 'اسم المطعم', value: request?.brand_name ?? '', placeholder: 'كافيه إكس' },
+      { name: 'brandId', label: 'المعرّف في اللينك (إنجليزي صغير)', dir: 'ltr', placeholder: 'cafex' },
+      { name: 'branchName', label: 'أول فرع', value: 'الفرع الرئيسي', placeholder: 'المعادي' },
+      { name: 'branchSlug', label: 'الفرع في اللينك (اختياري)', dir: 'ltr', placeholder: 'maadi', hint: 'فاضي = لينك الفرع هو اسم المطعم بس' },
+      { name: 'ownerName', label: 'اسم صاحب المطعم', value: request?.name ?? '' },
+      { name: 'phone', label: 'موبايله (بيدخل بيه)', type: 'tel', dir: 'ltr', value: request ? `0${String(request.phone).slice(2)}` : '', placeholder: '01012345678' },
+      { name: 'password', label: 'كلمة السر (اختياري)', dir: 'ltr', hint: 'فاضي = نعملها لوحدها' },
+    ],
+    submit: 'اعمل العميل',
+    onSubmit: async (v) => {
+      const res = await post('/clients', { ...v, requestId: request?.id ?? null });
+      await refresh();
+      const phone = String(v.phone ?? '').replace(/\D/g, '').replace(/^0/, '20');
+      const { form } = openForm({
+        title: 'الحساب جاهز',
+        intro: 'ابعتله الرسالة دي على واتساب.',
+        fields: [{ type: 'html', html: `<pre class="invite-text" dir="rtl">${esc(res.message)}</pre>` }],
+        submit: 'ابعتها واتساب',
+        onSubmit: async () => {
+          window.open(`https://wa.me/${phone}?text=${encodeURIComponent(res.message)}`, '_blank', 'noopener');
+        },
+      });
+      const copy = document.createElement('button');
+      copy.type = 'button';
+      copy.className = 'btn btn-block';
+      copy.textContent = 'انسخ الرسالة';
+      copy.addEventListener('click', () => copyValue(res.message));
+      form.querySelector('.sheet-actions').prepend(copy);
+    },
+  });
 }
 
 function newBrand() {
@@ -1018,6 +1084,8 @@ function onAction(el) {
   else if (act === 'owner') ownerAccount(id);
   else if (act === 'backup') backupNow(el);
   else if (act === 'bill') billingRequest(Number(id));
+  else if (act === 'request') newClient((overview.requests ?? []).find((r) => String(r.id) === id));
+  else if (act === 'account-toggle') toggleAccount(Number(id), el.dataset.disabled !== 'true');
   else if (act === 'payment' || act === 'resume') {
     const b = findBranch(id);
     if (b) branchAction(act, b);
@@ -1043,6 +1111,7 @@ async function boot() {
   setInterval(refresh, POLL_MS);
 
   $('new-brand').addEventListener('click', newBrand);
+  $('new-client').addEventListener('click', () => newClient());
   $('trash').addEventListener('click', openTrash);
   $('logout').addEventListener('click', async () => {
     await api('/api/super/logout', { method: 'POST' });

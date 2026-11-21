@@ -5,7 +5,9 @@ import { analyticsCsv, brandAnalytics, brandOverview } from '../aggregate.js';
 import { appKeyOf, appView, brandAppDir, ownerAppView } from '../apps.js';
 import { DEFAULT_RING } from '../../public/js/chime.js';
 import { cleanTexts } from '../../public/js/texts.js';
-import { channels } from '../bus.js';
+import { brandChannel, channels } from '../bus.js';
+import { alertView } from '../owner-alerts.js';
+import { openSse } from '../sse.js';
 import { cleanEmail, cleanPhone, egyptMobile, localMobile } from '../contact.js';
 import { DEMO_LOCKED, isDemo } from '../demo.js';
 import { HttpError } from '../errors.js';
@@ -181,7 +183,9 @@ export default async function brandRoutes(app, deps) {
       role: o.branch_id ? 'manager' : 'owner', branchId: o.branch_id ?? null,
     });
 
-    b.get('/overview', async (req) => {
+    b.get('/overview', async (req, reply) => {
+      // Every dashboard load renews the session: owners and managers are never signed out by time.
+      setOwnerSession(reply, config, req.owner);
       const overview = brandOverview(deps, req.params.brand, Date.now(), { branchId: req.scope });
       const mine = control.branchesOfBrand(req.params.brand).filter((br) => !br.deleted_at && (!req.scope || br.id === req.scope));
       return {
@@ -191,6 +195,7 @@ export default async function brandRoutes(app, deps) {
         // Why nothing works (a self-serve brand still opens its page, to subscribe).
         stopped: brandStopReason(mine),
         pendingBilling: req.scope ? null : control.billingRequestsOfBrand(req.params.brand).find((r) => r.status === 'pending') ?? null,
+        whatsapp: config.pay.whatsapp || null,
       };
     });
 
@@ -268,7 +273,9 @@ export default async function brandRoutes(app, deps) {
       }
 
       if (Object.keys(fields).length) {
+        const wasPaused = Boolean(ctx.store.getShop().paused);
         ctx.store.updateShop(fields);
+        if ('paused' in fields && Boolean(fields.paused) !== wasPaused) deps.ownerAlerts?.paused(ctx.branch, Boolean(fields.paused));
         // Open cashier and QR screens pick the change up (order QR mode, name, ...).
         service.publishShop(ctx, ctx.store.getShop());
         audit(fields.name ? 'branch.rename' : 'branch.owner_settings', { fields: Object.keys(fields), name: fields.name });
@@ -434,6 +441,8 @@ export default async function brandRoutes(app, deps) {
     b.post('/branches', async (req, reply) => {
       ownerOnly(req);
       const brandId = req.params.brand;
+      // Aurexis adds branches (/super); a self-serve brand (SIGNUP=on) still adds its own.
+      if (!control.getBrand(brandId)?.self_serve) throw new HttpError(403, 'الفروع الجديدة بتتعمل مع Aurexis. كلّمنا على واتساب');
       const body = req.body ?? {};
       const live = control.branchesOfBrand(brandId).filter((br) => !br.deleted_at);
       if (live.length >= MAX_BRANCHES) throw new HttpError(400, `أقصى عدد ${MAX_BRANCHES} فرع. كلّمنا لو محتاج أكتر`);
@@ -481,6 +490,7 @@ export default async function brandRoutes(app, deps) {
       if (control.ownerInBrand(brandId, username)) throw new HttpError(409, 'الرقم ده عليه حساب قبل كده', { field: 'phone' });
       const fields = await passwordFields(config.cookieSecret, password);
       const manager = control.createOwner({ brandId, branchId: branch.id, name, username, phone, ...fields });
+      bus.emit(brandChannel(brandId), 'changed', {});
       control.audit({ actor: `owner:${req.owner.id}`, action: 'manager.create', brandId, branchId: branch.id, detail: { name }, ip: req.ip });
       return reply.code(201).send({ manager: managerView(manager), managers: managersOf(brandId), loginUrl: `${config.publicUrl}/login` });
     });
@@ -543,6 +553,60 @@ export default async function brandRoutes(app, deps) {
       });
       control.audit({ actor: `owner:${req.owner.id}`, action: 'billing.request', brandId, detail: { id: request.id, months, amount: q.total, method }, ip: req.ip });
       return reply.code(201).send(billingView(brandId));
+    });
+
+    // ---- the managers' apps: live changes, alerts, phones to notify ----
+
+    // Server-sent events: «changed» whenever anything of these branches changes (orders, settings,
+    // the super's plan changes, cashier screens), and «alert» for a new alert. Clients refetch.
+    b.get('/events', async (req, reply) => {
+      const sse = openSse(req, reply);
+      sse.send('hello', { at: Date.now() });
+      const brandId = req.params.brand;
+      const mine = () => control.branchesOfBrand(brandId).filter((br) => !br.deleted_at && (!req.scope || br.id === req.scope));
+      let timer = null;
+      const changed = () => {
+        if (timer) return;
+        timer = setTimeout(() => {
+          timer = null;
+          sse.send('changed', { at: Date.now() });
+        }, 400);
+      };
+      const listeners = [];
+      const listen = (channel, fn) => {
+        bus.on(channel, fn);
+        listeners.push([channel, fn]);
+      };
+      for (const br of mine()) listen(channels(br.id).bar, changed);
+      listen(brandChannel(brandId), (event, data) => {
+        if (event === 'alert' && req.scope && data?.branchId && data.branchId !== req.scope) return;
+        if (event === 'alert') sse.send('alert', data);
+        changed();
+      });
+      sse.onClose(() => {
+        clearTimeout(timer);
+        for (const [channel, fn] of listeners) bus.off(channel, fn);
+      });
+    });
+
+    b.get('/alerts', async (req) => {
+      const afterId = Math.max(0, Number(req.query.after) || 0);
+      return { alerts: control.alertsFor(req.params.brand, req.scope, { afterId }).map(alertView) };
+    });
+
+    // This phone gets the alerts: { token, platform: ios | android }.
+    b.post('/push-devices', async (req) => {
+      const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
+      const platform = req.body?.platform === 'android' ? 'android' : 'ios';
+      if (!/^[A-Za-z0-9:_-]{16,300}$/.test(token)) throw new HttpError(400, 'مش مظبوط', { field: 'token' });
+      control.savePushDevice({ token, ownerId: req.owner.id, brandId: req.params.brand, platform });
+      return { ok: true };
+    });
+
+    b.post('/push-devices/delete', async (req) => {
+      const token = typeof req.body?.token === 'string' ? req.body.token : '';
+      if (token) control.dropPushDevice(token);
+      return { ok: true };
     });
 
     // ---- messages to the cashier screens (owner only) ----

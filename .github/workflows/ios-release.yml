@@ -29,8 +29,9 @@ jobs:
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-      # Every upload needs a higher build number; the run number only ever grows.
-      BUILD_NUMBER: ${{ github.run_number }}
+      # Every upload needs a higher build number than the last (project.yml starts at 202611211):
+      # the date and the run number only ever grow.
+      BUILD_NUMBER: "20261121${{ github.run_number }}"
     steps:
       - uses: actions/checkout@v7
       - name: Check secrets

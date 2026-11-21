@@ -96,6 +96,19 @@ export function createNotifier({ tenants, config, log }) {
     },
     // A new web push subscriber immediately gets the silent "preparing" notification
     // (or the ready one if it subscribed late).
+    /** An alert on an owner's / manager's iPhone. { gone: true } when the token is dead. */
+    async appAlert(token, { title, body, data = {} }) {
+      if (!apns) return null;
+      const res = await apns.send(token, {
+        topic: config.apple.appBundleId,
+        pushType: 'alert',
+        priority: 10,
+        payload: { aps: { alert: { title, body }, sound: 'default', 'thread-id': data.branchId ?? 'brand' }, ...data },
+      });
+      if (res.status === 410 || res.reason === 'BadDeviceToken' || res.reason === 'Unregistered') return { gone: true };
+      if (res.status !== 200) log.warn({ status: res.status, reason: res.reason }, 'APNs app alert failed');
+      return { ok: res.status === 200 };
+    },
     subscribed(sub, order, shop) {
       if (sub.kind === 'webpush') dispatch(sub, order, shop, false);
     },

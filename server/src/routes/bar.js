@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import QRCode from 'qrcode';
 import { pinFields, PIN_RE, verifyPin } from '../auth.js';
-import { channels } from '../bus.js';
+import { brandChannel, channels } from '../bus.js';
 import { staffCookieName } from '../cookies.js';
 import { egyptMobile, localMobile } from '../contact.js';
 import { planView, stoppedError, stopReason } from '../plans.js';
@@ -202,6 +202,7 @@ export default async function barRoutes(app, deps) {
       bus.on(channel, listener);
       const kind = req.query.screen === 'qr' ? 'qr' : 'bar';
       screens.add(branchId, kind);
+      bus.emit(brandChannel(req.ctx.branch.brand_id), 'changed', { branchId });
       if (appDevice) {
         screens.addDevice(appDevice);
         control.touchDevice(appDevice);
@@ -209,6 +210,7 @@ export default async function barRoutes(app, deps) {
       sse.onClose(() => {
         bus.off(channel, listener);
         screens.remove(branchId, kind);
+        bus.emit(brandChannel(req.ctx.branch.brand_id), 'changed', { branchId });
         if (appDevice) {
           screens.removeDevice(appDevice);
           control.touchDevice(appDevice);

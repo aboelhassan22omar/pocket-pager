@@ -23,7 +23,7 @@
   <header class="auth-top">
     <div class="container-lg d-flex align-items-center justify-content-between gap-3">
       <a class="auth-home" href="/" aria-label="Pocket Pager: الصفحة الرئيسية"><img src="/img/brand/lockup-on-dark.svg" alt="Pocket Pager" width="150" height="34"></a>
-      <a class="auth-switch" href="/signup">معنديش حساب، <strong>ابدأ ببلاش</strong></a>
+      <a class="auth-switch" href="/signup">معنديش حساب، <strong>اطلب حساب</strong></a>
     </div>
   </header>
 
@@ -33,9 +33,9 @@
       <p class="lede">لصاحب المطعم ومدير الفرع. الكاشير مش محتاج يدخل من هنا، هو بيفتح شاشة الكاشير بالرقم السري.</p>
 
       <div class="q">
-        <label for="f-login">رقم موبايلك</label>
+        <label for="f-login">رقم الموبايل أو اسم المستخدم</label>
         <input class="input" id="f-login" name="login" type="text" inputmode="tel" autocomplete="username" dir="ltr" placeholder="01012345678" autocapitalize="none" autocorrect="off" spellcheck="false" required>
-        <p class="hint">الرقم اللي عملت بيه الحساب. لو معاك اسم مستخدم قديم من Aurexis اكتبه هنا.</p>
+        <p class="hint">الرقم أو اسم المستخدم اللي وصلك من Aurexis.</p>
       </div>
       <div class="q">
         <label for="f-password">كلمة السر</label>
@@ -49,8 +49,8 @@
       <button class="btn btn-primary btn-block btn-go" type="submit" id="go">دخول</button>
 
       <div class="auth-links">
-        <span>نسيت كلمة السر؟ <a id="forgot" href="/support">كلّمنا ونرجّعها لك</a></span>
-        <span>أول مرة؟ <a href="/signup">اعمل حساب لمطعمك في دقيقتين</a></span>
+        <span>لحساب جديد أو نسيت الباسورد كلّمنا على واتساب</span>
+        <a class="btn btn-block" id="forgot" href="/support" target="_blank" rel="noopener">كلّمنا على واتساب</a>
       </div>
     </form>
   </main>

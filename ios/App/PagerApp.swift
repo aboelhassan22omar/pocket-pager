@@ -1,7 +1,10 @@
 import SwiftUI
+import UIKit
+import UserNotifications
 
 @main
 struct PagerApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var model = OrderModel(appKind: "app")
     @StateObject private var account = AccountModel()
     @State private var linkOpened = false
@@ -9,6 +12,7 @@ struct PagerApp: App {
     var body: some Scene {
         WindowGroup {
             AppRoot(model: model, account: account, linkOpened: $linkOpened)
+                .onAppear { appDelegate.account = account }
                 .onOpenURL { url in
                     linkOpened = true
                     model.handle(url: url)
@@ -23,8 +27,32 @@ struct PagerApp: App {
     }
 }
 
+/// Push notifications for owners and managers: the device token goes to the server, and an
+/// alert that arrives while the app is open still shows as a banner.
+final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+    weak var account: AccountModel?
+
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        UNUserNotificationCenter.current().delegate = self
+        return true
+    }
+
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        let token = deviceToken.map { String(format: "%02x", $0) }.joined()
+        Task { @MainActor in
+            UserDefaults.standard.set(token, forKey: AccountModel.pushTokenKey)
+            self.account?.pushToken(token)
+        }
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        Task { @MainActor in await self.account?.refresh() }
+        return [.banner, .sound, .list]
+    }
+}
+
 /// A customer who opened an order link (or has one running) sees their order, as before.
-/// Everyone else opens the restaurant side: what it is, sign up or log in, the dashboard.
+/// Everyone else opens the managers' side: sign in once, then the branches.
 struct AppRoot: View {
     @ObservedObject var model: OrderModel
     @ObservedObject var account: AccountModel
@@ -48,11 +76,8 @@ struct AppRoot: View {
                 ZStack {
                     Theme.background.ignoresSafeArea()
                     switch account.screen {
-                    case .welcome: WelcomeView(account: account)
                     case .login: LoginView(account: account)
-                    case .signup: SignupView(account: account)
-                    case .ready(let result): RestaurantReadyView(account: account, result: result)
-                    case .dashboard(let brandId): DashboardView(account: account, brandId: brandId)
+                    case .home(let brandId): ManagerHome(account: account, brandId: brandId)
                     }
                 }
                 .environment(\.layoutDirection, .rightToLeft)

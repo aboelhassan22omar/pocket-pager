@@ -742,14 +742,13 @@ describe('stopped branch screen', () => {
 });
 
 describe('self-serve pages', () => {
-  test('every sign-up question has its label and one line saying what and why', () => {
+  test('«اطلب حساب»: every question has its label, and the ones that matter say why', () => {
     const html = read('public/signup.html');
-    const questions = html.match(/<div class="q">[\s\S]*?<\/div>\s*(?=<div class="q">|<div class="preview-mini|<div class="link-preview|<\/section>)/g);
-    assert.ok(questions.length >= 7, `found ${questions.length}`);
-    for (const q of questions) {
-      assert.match(q, /<label for="f-[a-z-]+">/, q.slice(0, 80));
-      assert.match(q, /<p class="hint">[^<]{12,}/, q.slice(0, 80));
-    }
+    const questions = html.match(/<div class="q">[\s\S]*?(?=<div class="q">|<p class="form-error")/g);
+    assert.equal(questions.length, 5);
+    for (const q of questions) assert.match(q, /<label for="f-[a-z-]+">/, q.slice(0, 80));
+    assert.equal(questions.filter((q) => /<p class="hint">[^<]{12,}/.test(q)).length, 4);
+    assert.doesNotMatch(html, /password|كلمة سر/, 'no account is made here');
   });
 
   test('link names: suggested from Arabic or English names, typed as small English', async () => {

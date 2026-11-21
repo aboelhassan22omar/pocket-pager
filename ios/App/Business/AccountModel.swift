@@ -1,79 +1,119 @@
 import Foundation
+import UIKit
+import UserNotifications
 
-/// Where the restaurant side of the app is: the explainer, login, the three sign-up steps,
-/// the "your restaurant is ready" screen, or the dashboard.
+/// The managers' side of the app: sign-in, then the branches, alerts, management and account.
+/// Signed in once, it stays signed in: only «خروج», or Aurexis stopping the account / changing
+/// its password (the server answers 401), signs out.
 @MainActor
 final class AccountModel: ObservableObject {
     enum Screen: Equatable {
-        case welcome
         case login
-        case signup
-        case ready(AccountAPI.SignupResult)
-        case dashboard(brandId: String)
+        case home(brandId: String)
     }
 
     private static let brandKey = "pp.business.brand"
+    static let pushTokenKey = "pp.business.pushToken"
 
     @Published var screen: Screen
-    @Published var trialDays = 3
-    @Published var host = PagerAPI.baseURL.host ?? "pager.aurexis.cc"
+    @Published var overview: Overview?
+    @Published var alerts: [AlertItem] = []
+    @Published var loadError: String?
     @Published var support: String?
 
     let api = AccountAPI()
+    private var liveTask: Task<Void, Never>?
 
     init() {
         if let brand = UserDefaults.standard.string(forKey: Self.brandKey), Self.hasSession {
-            screen = .dashboard(brandId: brand)
+            screen = .home(brandId: brand)
         } else {
-            screen = .welcome
-        }
-        #if DEBUG
-        // Screenshots in CI (.github/workflows/ios-screens.yml): `-ppScreen <name>` opens one screen.
-        switch UserDefaults.standard.string(forKey: "ppScreen") {
-        case "login": screen = .login
-        case "signup1", "signup2", "signup3": screen = .signup
-        case "ready": if let sample = Self.sampleResult { screen = .ready(sample) }
-        default: break
-        }
-        #endif
-    }
-
-    #if DEBUG
-    static var previewStep: Int {
-        switch UserDefaults.standard.string(forKey: "ppScreen") {
-        case "signup2": return 2
-        case "signup3": return 3
-        default: return 1
+            screen = .login
         }
     }
-
-    static var previewFilled: Bool { UserDefaults.standard.string(forKey: "ppScreen")?.hasPrefix("signup") == true }
-
-    private static var sampleResult: AccountAPI.SignupResult? {
-        let json = #"{"brandId":"cafe-zd","branchId":"cafe-zd-maadi","pin":"4821","trial":true,"trialDays":3,"urls":{"bar":"https://pager.aurexis.cc/bar/cafe-zd-maadi","qr":"https://pager.aurexis.cc/qr/cafe-zd-maadi","settings":"https://pager.aurexis.cc/settings/cafe-zd-maadi"}}"#
-        return try? JSONDecoder().decode(AccountAPI.SignupResult.self, from: Data(json.utf8))
-    }
-    #endif
 
     private static var hasSession: Bool {
         (HTTPCookieStorage.shared.cookies ?? []).contains { $0.name == "sp_owner" && ($0.expiresDate ?? .distantFuture) > Date() }
     }
 
+    var brandId: String? {
+        if case .home(let id) = screen { return id }
+        return nil
+    }
+
+    /// The WhatsApp chat with Aurexis (new accounts, forgotten passwords, the subscription).
+    var whatsappURL: URL? {
+        let raw = overview?.whatsapp ?? support
+        guard let raw else { return nil }
+        var digits = raw.filter(\.isNumber)
+        if digits.hasPrefix("01") { digits = "2" + digits }
+        return URL(string: "https://wa.me/\(digits)")
+    }
+
     func loadInfo() async {
-        guard let info = try? await api.info() else { return }
-        trialDays = info.trialDays
-        host = info.host
-        support = info.support
+        support = (try? await api.info())?.support
     }
 
     func signedIn(brandId: String) {
         UserDefaults.standard.set(brandId, forKey: Self.brandKey)
-        screen = .dashboard(brandId: brandId)
+        screen = .home(brandId: brandId)
+        askForNotifications()
     }
 
     func signOut() async {
+        liveTask?.cancel()
+        if let brandId {
+            await api.logout(brandId: brandId, pushToken: UserDefaults.standard.string(forKey: Self.pushTokenKey))
+        }
         UserDefaults.standard.removeObject(forKey: Self.brandKey)
         await AccountAPI.clearSession()
-        screen = .welcome
+        overview = nil
+        alerts = []
+        screen = .login
+    }
+
+    /// Everything the screens show, fresh. A 401 means Aurexis ended the session.
+    func refresh() async {
+        guard let brandId else { return }
+        do {
+            overview = try await api.overview(brandId: brandId)
+            alerts = (try? await api.alerts(brandId: brandId)) ?? alerts
+            loadError = nil
+        } catch let failure as AccountAPI.Failure where failure.status == 401 || failure.status == 403 {
+            await signOut()
+        } catch {
+            loadError = error.localizedDescription
+        }
+    }
+
+    /// While the app is open: refresh whenever anything of the brand changes (server events).
+    func startLive() {
+        guard let brandId, liveTask == nil else { return }
+        liveTask = Task { [weak self] in
+            await self?.api.watch(brandId: brandId) { [weak self] in
+                Task { await self?.refresh() }
+            }
+        }
+    }
+
+    func stopLive() {
+        liveTask?.cancel()
+        liveTask = nil
+    }
+
+    // MARK: - Notifications
+
+    func askForNotifications() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+            guard granted else { return }
+            DispatchQueue.main.async { UIApplication.shared.registerForRemoteNotifications() }
+        }
+    }
+
+    /// The device token from APNs: the server pushes this brand's alerts to it.
+    func pushToken(_ token: String) {
+        UserDefaults.standard.set(token, forKey: Self.pushTokenKey)
+        guard let brandId else { return }
+        Task { await api.registerPush(brandId: brandId, token: token) }
     }
 }

@@ -1325,3 +1325,37 @@ body.has-sheet {
     padding: 14px;
   }
 }
+
+/* /super: every account of a brand, with stop / resume */
+.accounts {
+  display: grid;
+  gap: 4px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.accounts li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+}
+
+.accounts li.is-off > span:first-child {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.invite-text {
+  margin: 0;
+  padding: 14px;
+  border-radius: var(--r-control);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  white-space: pre-wrap;
+  line-height: 1.7;
+}

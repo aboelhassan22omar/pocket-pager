@@ -67,7 +67,18 @@ export function loadConfig(env = process.env) {
     // Self-serve sign-up at /signup (SIGNUP=off turns it off) and where subscriptions are paid.
     // The owner's «اشترك» shows the ones that are set (PAY_*=off hides one). WhatsApp is also
     // where «نسيت كلمة السر؟» leads.
-    signup: env.SIGNUP !== 'off',
+    // Accounts are made by Aurexis (/super); /signup only sends a request. SIGNUP=on brings the
+    // self-serve sign-up back.
+    signup: env.SIGNUP === 'on',
+    // The App Store review account (brand review-cafe), made and kept by the server.
+    reviewAccount: env.REVIEW_ACCOUNT !== 'off',
+    // How often the apps' alerts are checked (plans ending, cashier screens closed).
+    alertsIntervalSeconds: int(env.ALERTS_INTERVAL_SECONDS, 300, 1, 86400),
+    reviewPassword: str(env.REVIEW_PASSWORD, 'PocketReview1'),
+    storeLinks: {
+      ios: str(env.APP_STORE_URL, 'https://apps.apple.com/app/id6826356075'),
+      android: str(env.PLAY_STORE_URL, 'https://play.google.com/store/apps/details?id=cc.aurexis.pocketpager'),
+    },
     signupRatePerHour: int(env.SIGNUP_RATE_PER_HOUR, 10, 1, 100000),
     pay: {
       instapay: payDetail(env.PAY_INSTAPAY, '01024066401'),

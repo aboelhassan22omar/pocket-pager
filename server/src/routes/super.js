@@ -16,6 +16,8 @@ import {
 } from '../sessions.js';
 import { isTimeZone, randomId } from '../util.js';
 import { barShop, publicOrder } from '../views.js';
+import { brandChannel } from '../bus.js';
+import { accountPhone, cleanPersonName } from './account.js';
 import { sniffImage } from './bar.js';
 
 export const USERNAME_RE = /^[A-Za-z0-9._-]{3,32}$/;
@@ -89,7 +91,79 @@ export default async function superRoutes(app, deps) {
       return ctx;
     }
 
-    s.get('/overview', async () => ({ ...superOverview(deps), backup: backupStatus(config), billing: pendingBilling() }));
+    s.get('/overview', async () => ({
+      ...superOverview(deps), backup: backupStatus(config), billing: pendingBilling(), requests: control.openAccountRequests(),
+    }));
+
+    // ---- a new client in one step: brand + first branch + the owner's account ----
+
+    /** The WhatsApp message for the new owner: the apps, how to sign in, the cashier's links. */
+    function welcomeMessage({ brandName, owner, password, branchName, pin, urls }) {
+      return [
+        `أهلًا ${owner.name ?? ''}، حساب ${brandName} على Pocket Pager جاهز.`,
+        '',
+        'نزّل تطبيق الإدارة:',
+        `آيفون: ${config.storeLinks.ios}`,
+        `أندرويد: ${config.storeLinks.android}`,
+        '',
+        'ادخل بـ:',
+        `الموبايل: ${owner.username}`,
+        `كلمة السر: ${password}`,
+        `(أو من الكمبيوتر: ${config.publicUrl}/login)`,
+        '',
+        `فرع ${branchName}:`,
+        `شاشة الكاشير: ${urls.bar}`,
+        `شاشة الكود قدّام العميل: ${urls.qr}`,
+        `الرقم السري للكاشير: ${pin}`,
+      ].join('\n');
+    }
+
+    s.post('/clients', async (req, reply) => {
+      const body = req.body ?? {};
+      const ownerName = cleanPersonName(body.ownerName, 'ownerName');
+      const phone = accountPhone(body.phone);
+      const brand = provisionBrand(deps, { id: String(body.brandId ?? '').trim().toLowerCase(), name: body.brandName });
+      const branchSlug = String(body.branchSlug ?? '').trim().toLowerCase();
+      const branchId = branchSlug ? `${brand.id}-${branchSlug}` : brand.id;
+      const pin = /^\d{4,8}$/.test(String(body.pin ?? '')) ? String(body.pin) : String(Math.floor(1000 + Math.random() * 9000));
+      let shop;
+      try {
+        shop = await provisionBranch(deps, { brandId: brand.id, id: branchId, name: body.branchName || 'الفرع الرئيسي', pin });
+      } catch (err) {
+        control.purgeBrand(brand.id); // nothing half-made
+        throw err;
+      }
+      const username = phone.startsWith('20') ? `0${phone.slice(2)}` : phone;
+      const password = body.password ? checkPassword(body.password) : randomId(6);
+      const owner = control.createOwner({
+        brandId: brand.id, name: ownerName, username, phone, ...(await passwordFields(config.cookieSecret, password)),
+      });
+      // A request this client sent from /signup is done.
+      if (Number(body.requestId)) control.closeAccountRequest(Number(body.requestId));
+      audit(req, 'client.create', { brandId: brand.id, branchId: shop.id, detail: { name: brand.name, owner: ownerName } });
+      const urls = branchUrls(config, shop.id);
+      return reply.code(201).send({
+        brandId: brand.id, branchId: shop.id, username, password, pin, urls,
+        message: welcomeMessage({ brandName: brand.name, owner, password, branchName: shop.name, pin, urls }),
+      });
+    });
+
+    // Stop or resume an owner's / manager's account: stopped = signed out at once, can't sign in.
+    s.post('/owners/:owner/disable', async (req) => {
+      const owner = control.getOwner(Number(req.params.owner));
+      if (!owner) throw new HttpError(404, 'الحساب ده مش موجود');
+      const disabled = req.body?.disabled !== false;
+      control.setOwnerDisabled(owner.id, disabled);
+      bus.emit(brandChannel(owner.brand_id), 'changed', {});
+      audit(req, disabled ? 'owner.disable' : 'owner.enable', { brandId: owner.brand_id, detail: { username: owner.username } });
+      return { ok: true, disabled };
+    });
+
+    s.post('/account-requests/:id/close', async (req) => {
+      control.closeAccountRequest(Number(req.params.id));
+      audit(req, 'account.request_close', { detail: { id: Number(req.params.id) } });
+      return { requests: control.openAccountRequests() };
+    });
 
     // ---- subscription requests from the owners' «اشترك» ----
 

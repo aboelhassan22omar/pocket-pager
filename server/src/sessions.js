@@ -4,7 +4,10 @@ import { HttpError } from './errors.js';
 
 // One cookie and one HKDF-derived key per role (and per branch / brand). See DESIGN §15.
 
-const OWNER_MAX_AGE = 14 * 24 * 3600;
+// Owners and managers stay signed in (the apps never sign anyone out): the longest a browser keeps
+// a cookie, renewed on every dashboard load. A new password, a stopped account or a trashed brand
+// still end it at once.
+const OWNER_MAX_AGE = 400 * 24 * 3600;
 // Cashier apps: browsers cap cookie lifetimes at 400 days; every app start renews it.
 const DEVICE_MAX_AGE = 400 * 24 * 3600;
 const DOWNLOAD_TOKEN_MS = 2 * 3600 * 1000;
@@ -132,10 +135,9 @@ export function setOwnerSession(reply, config, owner) {
 export function requireOwner(req, { config, control }, brandId) {
   const s = verifyValue(config.cookieSecret, ownerKey(brandId), req.cookies[OWNER_COOKIE]);
   const owner = s && s.br === brandId ? control.getOwner(s.o) : null;
-  const fresh = s && Date.now() - Number(s.iat) < OWNER_MAX_AGE * 1000;
-  // A brand in the trash signs its owner out.
-  const live = owner && !control.getBrand(owner.brand_id)?.deleted_at;
-  if (!owner || !fresh || !live || owner.brand_id !== brandId || owner.pw_version !== s.pv) {
+  // A brand in the trash, or an account the super stopped, signs its owner out.
+  const live = owner && !owner.disabled_at && !control.getBrand(owner.brand_id)?.deleted_at;
+  if (!owner || !live || owner.brand_id !== brandId || owner.pw_version !== s.pv) {
     throw new HttpError(401, 'سجّل دخول الأول');
   }
   return owner;
