@@ -1,12 +1,15 @@
-name: iOS screens
+name: iOS app on a simulator
 
-# The restaurant side of the iPhone app, screen by screen, on a real iOS simulator: builds the app
-# (Debug, unsigned), opens each screen with `-ppScreen <name>` (AccountModel, DEBUG only) and
-# saves a screenshot. Artifact: ios-screens (PNG per screen). Runs on PRs that touch ios/ and by hand.
+# The managers' app, end to end on a real iOS simulator against a local server (the review brand):
+# sign in, the branches, a branch, alerts, management, account; still signed in after the app is
+# closed and after the phone restarts; a change on the server showing up live; a push; a branch
+# manager seeing one branch; a stopped account sent back to sign-in. A screenshot per step
+# (artifact ios-app-run). Runs on PRs that touch ios/ or the server, and by hand.
 on:
   pull_request:
     paths:
       - 'ios/**'
+      - 'server/src/**'
       - '.github/workflows/ios-screens.yml'
   workflow_dispatch:
 
@@ -14,29 +17,38 @@ permissions:
   contents: read
 
 jobs:
-  screens:
-    name: iOS - screenshots of every screen
+  run:
+    name: iOS - the managers' app on a simulator
     runs-on: macos-26
-    timeout-minutes: 45
-    defaults:
-      run:
-        working-directory: ios
+    timeout-minutes: 60
+    env:
+      BASE: http://127.0.0.1:3000
+      SHOTS: ${{ github.workspace }}/shots
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - name: Server (review brand, alerts every 2s)
+        working-directory: server
+        run: |
+          npm ci --omit=dev
+          HASH=$(node -e "import('./src/auth.js').then(async (m) => console.log(await m.hashPin('super-pass-ci')))")
+          mkdir -p "$RUNNER_TEMP/data"
+          PORT=3000 HOST=127.0.0.1 PUBLIC_URL="$BASE" DATA_DIR="$RUNNER_TEMP/data" REVIEW_ACCOUNT=on REVIEW_PASSWORD=Review-ci-1 \
+            ALERTS_INTERVAL_SECONDS=2 SUPER_PASSWORD_HASH="$HASH" PAY_WHATSAPP=01043833456 LOG_LEVEL=warn \
+            nohup node --disable-warning=ExperimentalWarning src/server.js > "$RUNNER_TEMP/server.log" 2>&1 &
+          for i in $(seq 1 30); do curl -fs "$BASE/health" && break; sleep 1; done
+          curl -fs -c "$RUNNER_TEMP/su.txt" -H 'content-type: application/json' -d '{"password":"super-pass-ci"}' "$BASE/api/super/login" > /dev/null
       - name: Select newest Xcode
         run: |
           latest=$(find /Applications -maxdepth 1 -name 'Xcode_*.app' | sort -V | tail -1)
           sudo xcode-select -s "$latest"
-          xcodebuild -version
-      - name: Install XcodeGen
-        run: brew install xcodegen
-      - name: Generate project
-        env:
-          PAGER_DOMAIN: pager.aurexis.cc
-          ALLOW_XCODE_26: "1"
-        run: bash generate.sh
-      - name: Boot an iPhone simulator
+      - name: Build the app for a simulator
+        working-directory: ios
         run: |
+          brew install xcodegen > /dev/null
+          PAGER_DOMAIN=pager.aurexis.cc ALLOW_XCODE_26=1 bash generate.sh
           udid=$(xcrun simctl list devices available -j | python3 -c '
           import json, sys
           devices = [d for rt, ds in json.load(sys.stdin)["devices"].items() if "iOS" in rt for d in ds]
@@ -45,29 +57,72 @@ jobs:
           echo "SIM=$udid" >> "$GITHUB_ENV"
           xcrun simctl boot "$udid"
           xcrun simctl bootstatus "$udid" -b
-          xcrun simctl status_bar "$udid" override --time "9:41" --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3
-      - name: Build for the simulator
-        run: |
           set -o pipefail
           xcodebuild -project PocketPager.xcodeproj -scheme PocketPager -configuration Debug \
-            -destination "id=$SIM" -derivedDataPath "$RUNNER_TEMP/dd" \
+            -destination "id=$udid" -derivedDataPath "$RUNNER_TEMP/dd" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build -quiet
-          app=$(find "$RUNNER_TEMP/dd/Build/Products" -maxdepth 2 -name 'PocketPager.app' | head -1)
-          xcrun simctl install "$SIM" "$app"
-      - name: Screenshot every screen
+          echo "APP=$(find "$RUNNER_TEMP/dd/Build/Products" -maxdepth 2 -name 'PocketPager.app' | head -1)" >> "$GITHUB_ENV"
+      - name: Run it, step by step
         run: |
-          mkdir -p "$RUNNER_TEMP/screens"
-          n=0
-          for screen in welcome login signup1 signup2 signup3 ready; do
-            n=$((n + 1))
-            xcrun simctl terminate "$SIM" cc.aurexis.pager >/dev/null 2>&1 || true
-            xcrun simctl launch "$SIM" cc.aurexis.pager -ppScreen "$screen"
-            sleep 6
-            xcrun simctl io "$SIM" screenshot "$RUNNER_TEMP/screens/0$n-$screen.png"
+          set -euo pipefail
+          mkdir -p "$SHOTS"
+          A=cc.aurexis.pager
+          shot() { sleep "${2:-6}"; xcrun simctl io "$SIM" screenshot "$SHOTS/$1.png" > /dev/null; echo "shot $1"; }
+          launch() { xcrun simctl terminate "$SIM" $A > /dev/null 2>&1 || true; xcrun simctl launch "$SIM" $A -ppBase "$BASE" "$@" > /dev/null; }
+          owner_api() { curl -fs -b "$RUNNER_TEMP/owner.txt" -c "$RUNNER_TEMP/owner.txt" -H 'content-type: application/json' "$@"; }
+          xcrun simctl status_bar "$SIM" override --time "9:41" --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3
+          xcrun simctl install "$SIM" "$APP"
+          xcrun simctl privacy "$SIM" grant notifications $A || true
+
+          # The owner on the server side too (to make changes the app should show live).
+          curl -fs -c "$RUNNER_TEMP/owner.txt" -H 'content-type: application/json' \
+            -d '{"login":"01099990001","password":"Review-ci-1"}' "$BASE/api/login" > /dev/null
+          owner_api -d '{"paused":true}' "$BASE/api/brand/review-cafe/branches/review-cafe-zamalek/settings" > /dev/null
+          owner_api -d '{"paused":false}' "$BASE/api/brand/review-cafe/branches/review-cafe-zamalek/settings" > /dev/null
+
+          launch; shot 01-sign-in
+          launch -ppLogin 01099990001 -ppPassword Review-ci-1; shot 02-branches 10
+          launch -ppTab 1; shot 03-alerts
+          launch -ppTab 2; shot 04-management 12
+          launch -ppTab 3; shot 05-account
+          launch -ppBranch review-cafe-maadi; shot 06-branch
+
+          # Stays signed in: the app closed and opened, then the phone restarted.
+          launch; shot 07-reopened-still-signed-in
+          xcrun simctl shutdown "$SIM"; xcrun simctl boot "$SIM"; xcrun simctl bootstatus "$SIM" -b
+          launch; shot 08-after-phone-restart-still-signed-in 10
+
+          # Live: an order taken on the server shows up without touching the app.
+          launch; shot 09-live-before 8
+          curl -fs -c "$RUNNER_TEMP/bar.txt" -H 'content-type: application/json' \
+            -d '{"shopId":"review-cafe-maadi","pin":"1234"}' "$BASE/api/bar/login" > /dev/null
+          K=$(curl -fs -b "$RUNNER_TEMP/bar.txt" "$BASE/api/bar/review-cafe-maadi/state" | python3 -c 'import json,sys,urllib.parse as u; print(u.parse_qs(u.urlparse(json.load(sys.stdin)["qr"]["staticUrl"]).query)["k"][0])')
+          for i in 1 2; do
+            curl -fs -H 'content-type: application/json' -H "x-client-id: ci-live-$i-xxxxxxxxxxxxxxxx" \
+              -d "{\"k\":\"$K\"}" "$BASE/api/b/review-cafe-maadi/claim" > /dev/null
           done
-          ls -la "$RUNNER_TEMP/screens"
+          shot 10-live-after-two-new-orders 5
+
+          # A push while the app is in the background.
+          xcrun simctl launch "$SIM" com.apple.Preferences > /dev/null
+          printf '{"aps":{"alert":{"title":"فرع الزمالك اتقفل مؤقتًا","body":"العملاء مش بياخدوا أرقام لحد ما يتفتح تاني."},"sound":"default"}}' > "$RUNNER_TEMP/push.json"
+          xcrun simctl push "$SIM" $A "$RUNNER_TEMP/push.json"; shot 11-push 3
+
+          # A branch manager: one branch only. Then the super stops the account: back to sign-in.
+          xcrun simctl uninstall "$SIM" $A; xcrun simctl install "$SIM" "$APP"
+          launch -ppLogin 01099990002 -ppPassword Review-ci-1; shot 12-manager-one-branch 10
+          MID=$(curl -fs -b "$RUNNER_TEMP/su.txt" "$BASE/api/super/overview" | python3 -c '
+          import json, sys
+          b = [x for x in json.load(sys.stdin)["brands"] if x["id"] == "review-cafe"][0]
+          print([o for o in b["owners"] if o["username"] == "01099990002"][0]["id"])')
+          curl -fs -b "$RUNNER_TEMP/su.txt" -H 'content-type: application/json' -d '{"disabled":true}' "$BASE/api/super/owners/$MID/disable" > /dev/null
+          launch; shot 13-stopped-account-back-to-sign-in 10
+          ls -la "$SHOTS"
+      - name: Server log
+        if: always()
+        run: tail -50 "$RUNNER_TEMP/server.log" || true
       - uses: actions/upload-artifact@v7
+        if: always()
         with:
-          name: ios-screens
-          path: ${{ runner.temp }}/screens
-          if-no-files-found: error
+          name: ios-app-run
+          path: ${{ env.SHOTS }}

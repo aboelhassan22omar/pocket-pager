@@ -4,6 +4,12 @@ import Foundation
 struct PagerAPI {
     /// From Info.plist `PagerBaseURL` (https://$PAGER_DOMAIN at generate time).
     static var baseURL: URL {
+        #if DEBUG
+        // CI runs the app against a local server: `-ppBase http://127.0.0.1:3000`.
+        if let raw = UserDefaults.standard.string(forKey: "ppBase"), let url = URL(string: raw), url.host != nil {
+            return url
+        }
+        #endif
         if let raw = Bundle.main.object(forInfoDictionaryKey: "PagerBaseURL") as? String,
            let url = URL(string: raw), url.host != nil {
             return url

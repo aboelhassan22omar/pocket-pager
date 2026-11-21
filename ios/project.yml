@@ -12,8 +12,8 @@ settings:
   base:
     DEVELOPMENT_TEAM: "${APPLE_TEAM_ID}"
     CODE_SIGN_STYLE: Automatic
-    MARKETING_VERSION: "1.1.0"
-    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "1.2.0"
+    CURRENT_PROJECT_VERSION: "202611211"
     SWIFT_VERSION: "5.0"
     # iPhone + iPad
     TARGETED_DEVICE_FAMILY: "1,2"
@@ -49,6 +49,9 @@ targets:
         PagerBaseURL: "https://${PAGER_DOMAIN}"
         # HTTPS only (exempt): skips the export-compliance question on every upload.
         ITSAppUsesNonExemptEncryption: false
+        # HTTP to this machine only (the CI simulator test against a local server).
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
     entitlements:
       path: Generated/PocketPager.entitlements
       properties:
