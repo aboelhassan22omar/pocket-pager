@@ -48,6 +48,9 @@ export async function ensureReview(deps) {
     if (branch.suspended_manual) control.setSuspended(b.id, false);
     const { store } = tenants.get(b.id);
     if (store.getShop().paused) store.updateShop({ paused: 0 });
+    // Its orders close within the hour and come back on the next check, so a reviewer always
+    // sees a few being made, none of them late.
+    store.updateShop({ expire_hours: 1, late_after_minutes: 90 });
     topUpDemo({ tenants, config }, Date.now(), b.id);
     // A few orders being made right now, as a reviewer would expect to see.
     const open = store.openOrders().length;
