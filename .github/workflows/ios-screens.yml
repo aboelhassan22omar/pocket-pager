@@ -38,7 +38,7 @@ jobs:
           PORT=3000 HOST=127.0.0.1 PUBLIC_URL="$BASE" DATA_DIR="$RUNNER_TEMP/data" REVIEW_ACCOUNT=on REVIEW_PASSWORD=Review-ci-1 \
             ALERTS_INTERVAL_SECONDS=2 SUPER_PASSWORD_HASH="$HASH" PAY_WHATSAPP=01043833456 LOG_LEVEL=warn \
             nohup node --disable-warning=ExperimentalWarning src/server.js > "$RUNNER_TEMP/server.log" 2>&1 &
-          for i in $(seq 1 30); do curl -fs "$BASE/health" && break; sleep 1; done
+          for _ in $(seq 1 30); do curl -fs "$BASE/health" && break; sleep 1; done
           curl -fs -c "$RUNNER_TEMP/su.txt" -H 'content-type: application/json' -d '{"password":"super-pass-ci"}' "$BASE/api/super/login" > /dev/null
       - name: Select newest Xcode
         run: |
