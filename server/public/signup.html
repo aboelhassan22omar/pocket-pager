@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0d1324">
   <meta name="color-scheme" content="dark">
-  <title>ابدأ ببلاش — Pocket Pager</title>
-  <meta name="description" content="اعمل حساب لمطعمك أو الكافيه بتاعك في دقيقتين، وجرّب Pocket Pager ببلاش.">
+  <title>اطلب حسابك — Pocket Pager</title>
+  <meta name="description" content="اطلب حساب Pocket Pager لمطعمك أو الكافيه بتاعك، وإحنا نجهّزهولك ونكلّمك.">
   <link rel="icon" href="/favicon.ico" sizes="48x48">
   <link rel="icon" href="/img/brand/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/img/brand/apple-touch-icon-180.png">
@@ -20,6 +20,8 @@
   <script type="module" src="/js/powered.js"></script>
   <script type="module" src="/js/signup.js"></script>
 </head>
+<!-- Aurexis makes every account (/super). This page only leaves the request there, and offers
+     the same on WhatsApp. -->
 <body class="auth" data-powered="inline">
   <header class="auth-top">
     <div class="container-lg d-flex align-items-center justify-content-between gap-3">
@@ -29,168 +31,53 @@
   </header>
 
   <main class="container-lg auth-main">
-    <div class="row g-4 g-xl-5 align-items-start justify-content-center">
-      <div class="col-12 col-lg-7 col-xl-6">
-        <ol class="steps" id="steps" aria-label="الخطوات">
-          <li data-step="1"><span class="steps-dot">1</span><span class="steps-name">حسابك</span></li>
-          <li data-step="2"><span class="steps-dot">2</span><span class="steps-name">مطعمك</span></li>
-          <li data-step="3"><span class="steps-dot">3</span><span class="steps-name">أول فرع</span></li>
-        </ol>
+    <form id="request" class="auth-card auth-narrow" novalidate>
+      <h1>اطلب حساب لمطعمك</h1>
+      <p class="lede">اكتب بياناتك، وإحنا نجهّز الحساب والفروع ونكلّمك بنفسنا. مش هتدفع حاجة دلوقتي.</p>
 
-        <form id="signup" class="auth-card" novalidate>
-          <!-- 1: who you are -->
-          <section class="step" data-step="1" aria-labelledby="h-step1">
-            <h1 id="h-step1">أهلًا بيك! خلّينا نعمل حسابك</h1>
-            <p class="lede">3 خطوات صغيرة، وبعدها مطعمك يشتغل على طول. <span id="trial-line">وأول 3 أيام ببلاش.</span></p>
-
-            <div class="q">
-              <label for="f-name">اسمك</label>
-              <input class="input" id="f-name" name="name" autocomplete="name" maxlength="60" placeholder="مثلًا: أحمد علي" required>
-              <p class="hint">عشان نعرف نناديك بإسمك لما نكلمك.</p>
-            </div>
-            <div class="q">
-              <label for="f-phone">رقم موبايلك</label>
-              <input class="input" id="f-phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" dir="ltr" placeholder="01012345678" required>
-              <p class="hint">هتدخل بيه كل مرة، مكان اسم المستخدم. مش هنبعتلك إعلانات.</p>
-            </div>
-            <div class="q">
-              <label for="f-password">كلمة سر</label>
-              <div class="input-with">
-                <input class="input" id="f-password" name="password" type="password" autocomplete="new-password" minlength="6" required>
-                <button class="input-eye" type="button" data-eye="f-password" aria-label="اعرض كلمة السر" aria-pressed="false"></button>
-              </div>
-              <p class="hint">6 حروف أو أرقام على الأقل. دي ليك إنت بس، الكاشير مش محتاجها.</p>
-            </div>
-          </section>
-
-          <!-- 2: the restaurant -->
-          <section class="step" data-step="2" aria-labelledby="h-step2" hidden>
-            <h1 id="h-step2">مطعمك اسمه إيه؟</h1>
-            <p class="lede">الاسم ده اللي عملاءك هيشوفوه على موبايلهم وهم مستنيين طلبهم.</p>
-
-            <div class="q">
-              <label for="f-brand">اسم المطعم أو الكافيه</label>
-              <input class="input" id="f-brand" name="brandName" maxlength="60" placeholder="مثلًا: كافيه زد" required>
-              <p class="hint">اكتبه زي ما هو مكتوب على اليافطة، عربي أو إنجليزي.</p>
-            </div>
-            <div class="q">
-              <label for="f-slug">اسم المطعم في اللينك</label>
-              <div class="slug" dir="ltr">
-                <span class="slug-host" id="slug-host">pager.aurexis.cc/s/</span>
-                <input class="input slug-input" id="f-slug" name="brandId" maxlength="24" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="cafe-z" required>
-              </div>
-              <p class="hint">كلمة قصيرة بالإنجليزي. العميل مش هيكتبها، هي جوه الكود اللي بيمسحه. عملناها لك من الاسم، وتقدر تغيّرها.</p>
-              <p class="slug-state" id="slug-state" role="status" aria-live="polite"></p>
-            </div>
-
-            <div class="preview-mini d-lg-none" aria-hidden="true">
-              <span class="preview-mini-tile" data-preview="initial">ك</span>
-              <span><strong data-preview="name">كافيه زد</strong><small>ده شكل اسمك عند العميل</small></span>
-            </div>
-          </section>
-
-          <!-- 3: the first branch -->
-          <section class="step" data-step="3" aria-labelledby="h-step3" hidden>
-            <h1 id="h-step3">أول فرع فين؟</h1>
-            <p class="lede">كل فرع ليه شاشة كاشير ولينك وكود لوحده. تقدر تزوّد فروع بعدين.</p>
-
-            <div class="q">
-              <label for="f-branch">اسم الفرع</label>
-              <input class="input" id="f-branch" name="branchName" maxlength="60" value="الفرع الرئيسي">
-              <p class="hint">اسم المنطقة غالبًا، زي «المعادي». لو عندك فرع واحد سيبها زي ما هي.</p>
-            </div>
-            <div class="q">
-              <label for="f-branch-slug">اسم الفرع في اللينك <span class="optional">(اختياري)</span></label>
-              <input class="input" id="f-branch-slug" name="branchSlug" dir="ltr" maxlength="20" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="maadi">
-              <p class="hint">بيتحط آخر اللينك عشان كل فرع يبقى ليه لينك. سيبها فاضية لو عندك فرع واحد.</p>
-            </div>
-
-            <div class="link-preview" dir="ltr">
-              <span class="link-preview-label" dir="rtl">لينك فرعك هيبقى:</span>
-              <code id="link-preview">pager.aurexis.cc/s/cafe-z</code>
-            </div>
-
-            <p class="trial-note" id="trial-note">
-              <span class="trial-note-icon" data-icon="gift"></span>
-              <span><strong>جرّب 3 أيام ببلاش.</strong> من غير فيزا ولا دفع. بعدها تشترك من لوحة التحكم لو عجبك.</span>
-            </p>
-          </section>
-
-          <p class="form-error" id="form-error" role="alert" hidden></p>
-
-          <div class="step-actions">
-            <button class="btn btn-quiet" type="button" id="back" hidden>رجوع</button>
-            <button class="btn btn-primary btn-go" type="submit" id="next">كمّل</button>
-          </div>
-        </form>
-
-        <!-- done: the links are ready -->
-        <section class="auth-card done" id="done" aria-labelledby="h-done" hidden>
-          <div class="done-head">
-            <span class="done-mark" data-icon="check"></span>
-            <div>
-              <h1 id="h-done">مطعمك جاهز!</h1>
-              <p class="lede" id="done-lede">فاضل 3 حاجات بسيطة وتبدأ تشتغل.</p>
-            </div>
-          </div>
-
-          <div class="pin-card">
-            <span class="pin-label">الرقم السري لشاشة الكاشير</span>
-            <strong class="pin num" id="done-pin" dir="ltr">0000</strong>
-            <span class="hint">الكاشير بيكتبه مرة واحدة بس على جهازه. احفظه، وتقدر تغيّره بعدين من لوحة التحكم.</span>
-          </div>
-
-          <ol class="todo">
-            <li>
-              <div class="todo-text">
-                <strong>افتح شاشة الكاشير على جهاز الكاشير</strong>
-                <span class="hint">تابلت أو كمبيوتر أو موبايل جنب الكاشير. منها بيدوس «جاهز» فموبايل العميل يرن.</span>
-              </div>
-              <div class="todo-actions">
-                <a class="btn btn-primary" id="open-bar" href="#" target="_blank" rel="noopener">افتح شاشة الكاشير</a>
-                <button class="btn" type="button" data-copy="bar">انسخ اللينك</button>
-              </div>
-            </li>
-            <li>
-              <div class="todo-text">
-                <strong>حط الكود قدّام العميل</strong>
-                <span class="hint">افتح شاشة الكود على شاشة صغيرة قدّام العميل، أو اطبعه وحطه على الكاونتر.</span>
-              </div>
-              <div class="todo-actions">
-                <a class="btn" id="open-qr" href="#" target="_blank" rel="noopener">افتح شاشة الكود</a>
-              </div>
-            </li>
-            <li>
-              <div class="todo-text">
-                <strong>جرّب بنفسك</strong>
-                <span class="hint">امسح الكود بكاميرا موبايلك، وبعدين دوس على الرقم في شاشة الكاشير. موبايلك هيرن.</span>
-              </div>
-            </li>
-          </ol>
-
-          <a class="btn btn-block" id="to-dashboard" href="#">ادخل لوحة التحكم</a>
-        </section>
+      <div class="q">
+        <label for="f-name">اسمك</label>
+        <input class="input" id="f-name" name="name" autocomplete="name" maxlength="60" placeholder="مثلًا: أحمد علي" required>
+        <p class="hint">عشان نعرف نناديك بإسمك لما نكلمك.</p>
+      </div>
+      <div class="q">
+        <label for="f-phone">رقم موبايلك</label>
+        <input class="input" id="f-phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" dir="ltr" placeholder="01012345678" required>
+        <p class="hint">هنكلمك عليه، وهيبقى هو اللي تدخل بيه.</p>
+      </div>
+      <div class="q">
+        <label for="f-brand">اسم المطعم أو الكافيه</label>
+        <input class="input" id="f-brand" name="brandName" maxlength="60" placeholder="مثلًا: كافيه زد" required>
+        <p class="hint">زي ما هو مكتوب على اليافطة.</p>
+      </div>
+      <div class="q">
+        <label for="f-branches">عندك كام فرع؟</label>
+        <input class="input" id="f-branches" name="branches" type="number" inputmode="numeric" min="1" max="500" value="1" dir="ltr">
+        <p class="hint">عشان نجهّز كل الفروع مرة واحدة.</p>
+      </div>
+      <div class="q">
+        <label for="f-note">حاجة تحب تقولها؟ <span class="optional">(اختياري)</span></label>
+        <textarea class="input" id="f-note" name="note" rows="2" maxlength="300" placeholder="مثلًا: عندنا توصيل، وسيستم الكاشير Foodics"></textarea>
       </div>
 
-      <!-- What the customer will see, live as the owner types. -->
-      <aside class="col-lg-5 col-xl-4 d-none d-lg-block preview" aria-label="شكل صفحة العميل">
-        <p class="preview-caption">ده اللي العميل هيشوفه على موبايله</p>
-        <div class="phone">
-          <div class="phone-screen">
-            <div class="phone-brand">
-              <span class="phone-tile" data-preview="initial">ك</span>
-              <strong data-preview="name">كافيه زد</strong>
-              <small data-preview="branch">الفرع الرئيسي</small>
-            </div>
-            <span class="phone-label">رقم طلبك</span>
-            <span class="phone-number num">12</span>
-            <span class="phone-status">طلبك بيتحضّر</span>
-            <span class="phone-bar"><span></span></span>
-            <span class="phone-note">موبايلك هيرن أول ما يجهز</span>
-          </div>
+      <p class="form-error" id="form-error" role="alert" hidden></p>
+      <button class="btn btn-primary btn-block btn-go" type="submit" id="send">ابعت الطلب</button>
+      <div class="auth-links">
+        <span>مستعجل؟ <a id="wa" href="/support" target="_blank" rel="noopener">كلّمنا على واتساب على طول</a></span>
+      </div>
+    </form>
+
+    <section class="auth-card auth-narrow done" id="done" aria-labelledby="h-done" hidden>
+      <div class="done-head">
+        <span class="done-mark" data-icon="check"></span>
+        <div>
+          <h1 id="h-done">طلبك وصلنا</h1>
+          <p class="lede">هنكلمك قريب ونجهّزلك الحساب. لو حابب تسرّعها ابعتلنا على واتساب.</p>
         </div>
-      </aside>
-    </div>
+      </div>
+      <a class="btn btn-primary btn-block btn-go" id="done-wa" href="/support" target="_blank" rel="noopener">ابعتلنا على واتساب</a>
+      <a class="btn btn-block" href="/demo">اتفرّج على الديمو لحد ما نكلّمك</a>
+    </section>
   </main>
 </body>
 </html>

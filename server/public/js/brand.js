@@ -168,6 +168,8 @@ function render() {
   // One branch: its card already says it all.
   $('today').innerHTML = data.branches.length > 1 ? todayHtml(data.branches, { renewals: !data.brand.selfServe }) : '';
   $('branches-head').hidden = !owner || data.demo;
+  // Aurexis adds branches; a self-serve brand (SIGNUP=on) adds its own.
+  $('add-branch').hidden = !data.brand.selfServe;
   renderAccount();
   for (const id of ['h-ring', 'ring-body', 'h-texts', 'texts-body']) $(id).hidden = !owner;
   const now = Date.now();
@@ -662,6 +664,23 @@ async function openDrivers(b) {
   });
 }
 
+function watchLive() {
+  let es = null;
+  let pending = null;
+  const connect = () => {
+    es = new EventSource(`${base}/events`);
+    es.addEventListener('changed', () => {
+      clearTimeout(pending);
+      pending = setTimeout(refresh, 250);
+    });
+    es.addEventListener('alert', () => refresh());
+    es.addEventListener('error', () => {
+      if (es.readyState === EventSource.CLOSED) setTimeout(connect, 5000);
+    });
+  };
+  connect();
+}
+
 async function refresh() {
   try {
     data = await api(`${base}/overview`);
@@ -697,6 +716,9 @@ async function boot() {
     const el = e.target.closest('[data-act], [data-copy]');
     if (el) appAction(el);
   });
+  // Live: the server says when anything of these branches changes (orders, the cashier screen,
+  // the super's plan changes, alerts); the 30s poll stays as a fallback.
+  watchLive();
   setInterval(refresh, POLL_MS);
 
   $('texts-body').addEventListener('click', (e) => {

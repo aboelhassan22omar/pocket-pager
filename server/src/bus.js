@@ -8,6 +8,9 @@ export function createBus() {
   return bus;
 }
 
+/** Everything of one brand that its dashboards and apps refresh on (alerts, screens, branches). */
+export const brandChannel = (brandId) => `brand:${brandId}`;
+
 export const channels = (branchId) => ({
   order: (orderId) => `b:${branchId}:order:${orderId}`,
   bar: `b:${branchId}:bar`,

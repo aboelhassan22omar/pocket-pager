@@ -47,6 +47,8 @@ export async function startServer(env = {}, { dataDir: seeded, expectExit = fals
       VAPID_PUBLIC_KEY: '',
       VAPID_PRIVATE_KEY: '',
       COOKIE_SECRET: '',
+      // The App Store review brand is tested on its own (review.test.js).
+      REVIEW_ACCOUNT: 'off',
       ...env,
     },
     stdio: ['ignore', 'pipe', 'pipe'],

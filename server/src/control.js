@@ -219,6 +219,43 @@ export const CONTROL_MIGRATIONS = [
     PRIMARY KEY (announcement_id, branch_id)
   );
   `,
+  // 15: the managers' app. owners.disabled_at: an account the super stopped (signed out, can't
+  //     sign in). account_requests: «اطلب حساب» from /signup (no account is made). owner_alerts:
+  //     what the apps notify (once per dedupe key). push_devices: the iPhones (APNs) and Androids
+  //     of owners and managers.
+  `
+  ALTER TABLE owners ADD COLUMN disabled_at INTEGER;
+  CREATE TABLE account_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    phone TEXT NOT NULL,
+    brand_name TEXT NOT NULL,
+    branches INTEGER NOT NULL DEFAULT 1,
+    note TEXT,
+    created_at INTEGER NOT NULL,
+    closed_at INTEGER
+  );
+  CREATE TABLE owner_alerts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    brand_id TEXT NOT NULL,
+    branch_id TEXT,
+    kind TEXT NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    dedupe TEXT NOT NULL UNIQUE,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX owner_alerts_brand ON owner_alerts (brand_id, id);
+  CREATE TABLE push_devices (
+    token TEXT PRIMARY KEY,
+    owner_id INTEGER NOT NULL,
+    brand_id TEXT NOT NULL,
+    platform TEXT NOT NULL CHECK (platform IN ('ios', 'android')),
+    created_at INTEGER NOT NULL,
+    last_seen_at INTEGER NOT NULL
+  );
+  CREATE INDEX push_devices_brand ON push_devices (brand_id);
+  `,
 ];
 
 export const branchDbPath = (brandId, branchId) => `tenants/${brandId}/${branchId}/pager.db`;
@@ -252,7 +289,7 @@ export class ControlStore {
       ownersByName: p('SELECT * FROM owners WHERE username = ? COLLATE NOCASE ORDER BY id'),
       ownerInBrand: p('SELECT * FROM owners WHERE brand_id = ? AND username = ? COLLATE NOCASE'),
       ownersByPhone: p('SELECT * FROM owners WHERE phone = ? ORDER BY id'),
-      brandOwners: p(`SELECT id, brand_id, branch_id, name, username, email, phone, password_sealed, created_at, last_login_at
+      brandOwners: p(`SELECT id, brand_id, branch_id, name, username, email, phone, password_sealed, created_at, last_login_at, disabled_at
                       FROM owners WHERE brand_id = ? ORDER BY id`),
       insertOwner: p(`INSERT INTO owners (brand_id, branch_id, name, username, email, phone, password_hash, password_sealed, created_at)
                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`),
@@ -518,6 +555,57 @@ export class ControlStore {
     return this.getOwner(id);
   }
 
+  // ---- the managers' app: stopped accounts, requests, alerts, phones to notify ----
+
+  setOwnerDisabled(id, disabled, at = Date.now()) {
+    this.db.prepare('UPDATE owners SET disabled_at = ? WHERE id = ?').run(disabled ? at : null, id);
+    if (disabled) this.db.prepare('DELETE FROM push_devices WHERE owner_id = ?').run(id);
+    return this.getOwner(id);
+  }
+
+  createAccountRequest({ name, phone, brandName, branches = 1, note = null, at = Date.now() }) {
+    const res = this.db.prepare(`INSERT INTO account_requests (name, phone, brand_name, branches, note, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)`).run(name, phone, brandName, branches, note, at);
+    return Number(res.lastInsertRowid);
+  }
+
+  openAccountRequests() {
+    return this.db.prepare('SELECT * FROM account_requests WHERE closed_at IS NULL ORDER BY id').all();
+  }
+
+  closeAccountRequest(id, at = Date.now()) {
+    return this.db.prepare('UPDATE account_requests SET closed_at = ? WHERE id = ? AND closed_at IS NULL').run(at, id).changes === 1;
+  }
+
+  /** A new alert, or null when this dedupe key was raised before. */
+  addAlert({ brandId, branchId = null, kind, title, body, dedupe, at = Date.now() }) {
+    const res = this.db.prepare(`INSERT OR IGNORE INTO owner_alerts (brand_id, branch_id, kind, title, body, dedupe, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`).run(brandId, branchId, kind, title, body, dedupe, at);
+    return res.changes ? this.db.prepare('SELECT * FROM owner_alerts WHERE id = ?').get(Number(res.lastInsertRowid)) : null;
+  }
+
+  /** The latest alerts of a brand (or of one branch, for its manager), newest first. */
+  alertsFor(brandId, branchId = null, { limit = 50, afterId = 0 } = {}) {
+    return branchId
+      ? this.db.prepare('SELECT * FROM owner_alerts WHERE brand_id = ? AND (branch_id = ? OR branch_id IS NULL) AND id > ? ORDER BY id DESC LIMIT ?')
+        .all(brandId, branchId, afterId, limit)
+      : this.db.prepare('SELECT * FROM owner_alerts WHERE brand_id = ? AND id > ? ORDER BY id DESC LIMIT ?').all(brandId, afterId, limit);
+  }
+
+  savePushDevice({ token, ownerId, brandId, platform, at = Date.now() }) {
+    this.db.prepare(`INSERT INTO push_devices (token, owner_id, brand_id, platform, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT (token) DO UPDATE SET owner_id = excluded.owner_id, brand_id = excluded.brand_id, platform = excluded.platform,
+        last_seen_at = excluded.last_seen_at`).run(token, ownerId, brandId, platform, at, at);
+  }
+
+  pushDevicesOfBrand(brandId) {
+    return this.db.prepare('SELECT * FROM push_devices WHERE brand_id = ?').all(brandId);
+  }
+
+  dropPushDevice(token) {
+    this.db.prepare('DELETE FROM push_devices WHERE token = ?').run(token);
+  }
+
   // ---- the owner's messages to the cashier screens ----
 
   createAnnouncement({ brandId, text, branchIds = null, days = 3, actor = null, at = Date.now() }) {
@@ -749,6 +837,8 @@ export class ControlStore {
         'DELETE FROM billing_requests WHERE brand_id = ?',
         'DELETE FROM announcement_reads WHERE announcement_id IN (SELECT id FROM announcements WHERE brand_id = ?)',
         'DELETE FROM announcements WHERE brand_id = ?',
+        'DELETE FROM owner_alerts WHERE brand_id = ?',
+        'DELETE FROM push_devices WHERE brand_id = ?',
         'DELETE FROM owners WHERE brand_id = ?',
         'DELETE FROM branches WHERE brand_id = ?',
         'DELETE FROM brands WHERE id = ?',

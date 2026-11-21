@@ -43,7 +43,7 @@ describe('self-serve sign-up, login, trial once, managers, billing', () => {
   let server;
   let su;
   before(async () => {
-    server = await startServer({ SUPER_PASSWORD_HASH: await hashPin(SUPER_PASSWORD), PAY_INSTAPAY: 'pocket@instapay', PAY_WALLET: 'off' });
+    server = await startServer({ SUPER_PASSWORD_HASH: await hashPin(SUPER_PASSWORD), PAY_INSTAPAY: 'pocket@instapay', PAY_WALLET: 'off', SIGNUP: 'on' });
     su = client(server.url);
     await su.post('/api/super/login', { password: SUPER_PASSWORD });
   });

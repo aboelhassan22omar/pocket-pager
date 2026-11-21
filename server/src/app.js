@@ -17,6 +17,8 @@ import { runWeeklySummaries } from './summary.js';
 import { createPackages } from './native/packages.js';
 import { purgeSandboxes, topUpDemo } from './demo.js';
 import { mailScreenAlerts } from './alerts.js';
+import { createOwnerAlerts } from './owner-alerts.js';
+import { ensureReview } from './review.js';
 import accountRoutes from './routes/account.js';
 import adminRoutes from './routes/admin.js';
 import appRoutes from './routes/app.js';
@@ -65,7 +67,8 @@ export async function buildApp(config) {
   const service = createService({ control, tenants, bus, notifier, screens, config, log: app.log });
   const packages = createPackages({ config });
   const alarms = createAlarms({ config, control, bus, log: app.log });
-  const ctx = { config, control, tenants, bus, screens, notifier, service, packages, alarms };
+  const ownerAlerts = createOwnerAlerts({ control, tenants, screens, config, notifier, bus, log: app.log });
+  const ctx = { config, control, tenants, bus, screens, notifier, service, packages, alarms, ownerAlerts };
 
   app.addContentTypeParser(LOGO_TYPES, { parseAs: 'buffer', bodyLimit: LOGO_MAX_BYTES }, (_req, body, done) => {
     done(null, body);
@@ -141,11 +144,19 @@ export async function buildApp(config) {
     control.refreshPlanStatuses();
     control.purgeDeviceErrors(Date.now() - 30 * 86_400_000);
     topUpDemo({ tenants, config });
+    ensureReview(ctx).catch((err) => app.log.error({ err }, 'review brand failed'));
     // The demo's visitor cafés: gone a day after last use.
     const purged = purgeSandboxes({ control, tenants });
     if (purged) app.log.info({ purged }, 'removed idle demo cafés');
   }, 3600_000);
   const rollups = setInterval(() => service.runRollups(), 300_000);
+  const appAlerts = setInterval(() => {
+    try {
+      ownerAlerts.check();
+    } catch (err) {
+      app.log.error({ err }, 'owner alerts failed');
+    }
+  }, config.alertsIntervalSeconds * 1000);
   const alerts = setInterval(() => {
     mailScreenAlerts({ ...ctx, log: app.log }).catch((err) => app.log.error({ err }, 'screen alerts failed'));
   }, 300_000);
@@ -154,6 +165,7 @@ export async function buildApp(config) {
   }, 3600_000);
   const stopBackups = scheduleBackups({ config, control, tenants, log: app.log });
   app.addHook('onReady', async () => {
+    await ensureReview(ctx).catch((err) => app.log.error({ err }, 'review brand failed'));
     service.runJobs();
     control.refreshPlanStatuses();
   });
@@ -163,6 +175,7 @@ export async function buildApp(config) {
     clearInterval(plans);
     clearInterval(rollups);
     clearInterval(alerts);
+    clearInterval(appAlerts);
     clearInterval(summaries);
     stopBackups();
     notifier.close();

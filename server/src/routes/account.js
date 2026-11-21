@@ -132,6 +132,24 @@ export default async function accountRoutes(app, deps) {
     host: config.publicUrl.replace(/^https?:\/\//, ''),
   }));
 
+  // «اطلب حساب» (/signup): Aurexis makes every account; this only leaves the request in /super.
+  const requestLimiter = createRateLimiter({ limit: 5, windowMs: 3600_000 });
+  app.addHook('onClose', async () => requestLimiter.close());
+  app.post('/api/account-requests', async (req, reply) => {
+    requireJson(req);
+    limited(requestLimiter, `request|${req.ip}`, reply);
+    const body = req.body ?? {};
+    const name = cleanPersonName(body.name);
+    const phone = accountPhone(body.phone);
+    const brandName = typeof body.brandName === 'string' ? body.brandName.trim() : '';
+    if (brandName.length < 2 || brandName.length > NAME_MAX) throw bad('brandName', 'اكتب اسم المطعم أو الكافيه (من 2 لـ 60 حرف)');
+    const branches = Math.min(500, Math.max(1, Math.floor(Number(body.branches)) || 1));
+    const note = typeof body.note === 'string' ? body.note.trim().slice(0, 300) || null : null;
+    const id = control.createAccountRequest({ name, phone, brandName, branches, note });
+    control.audit({ actor: 'public', action: 'account.request', detail: { id, brandName, branches }, ip: req.ip });
+    return reply.code(201).send({ ok: true, whatsapp: config.pay.whatsapp ? waNumber(config.pay.whatsapp) : null });
+  });
+
   // Is this link name free? ?brand=<slug>[&branch=<slug>]
   app.get('/api/signup/check', async (req, reply) => {
     limited(checkLimiter, `check|${req.ip}`, reply);
@@ -212,11 +230,15 @@ export default async function accountRoutes(app, deps) {
       }
     }
     if (!owner) throw new HttpError(401, 'الرقم أو كلمة السر غلط');
+    if (owner.disabled_at) throw new HttpError(403, 'الحساب ده موقوف. كلّمنا على واتساب');
     if (control.getBrand(owner.brand_id)?.deleted_at) throw new HttpError(403, 'الحساب ده اتقفل. كلّم Aurexis لو عايز ترجّعه');
     control.markOwnerLogin(owner.id);
     setOwnerSession(reply, config, owner);
     control.audit({ actor: `owner:${owner.id}`, action: 'owner.login', brandId: owner.brand_id, ip: req.ip });
-    return { brandId: owner.brand_id, manager: Boolean(owner.branch_id), to: `/brand/${owner.brand_id}` };
+    return {
+      brandId: owner.brand_id, manager: Boolean(owner.branch_id), branchId: owner.branch_id ?? null,
+      name: owner.name ?? owner.username, to: `/brand/${owner.brand_id}`,
+    };
   });
 }
 
