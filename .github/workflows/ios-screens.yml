@@ -72,7 +72,9 @@ jobs:
           owner_api() { curl -fs -b "$RUNNER_TEMP/owner.txt" -c "$RUNNER_TEMP/owner.txt" -H 'content-type: application/json' "$@"; }
           xcrun simctl status_bar "$SIM" override --time "9:41" --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3
           xcrun simctl install "$SIM" "$APP"
-          xcrun simctl privacy "$SIM" grant notifications $A || true
+          brew tap wix/brew > /dev/null && brew install applesimutils > /dev/null
+          allow() { applesimutils --byId "$1" --bundle $A --setPermissions notifications=YES > /dev/null; }
+          allow "$SIM"
 
           # The owner on the server side too (to make changes the app should show live).
           curl -fs -c "$RUNNER_TEMP/owner.txt" -H 'content-type: application/json' \
@@ -109,7 +111,7 @@ jobs:
           xcrun simctl push "$SIM" $A "$RUNNER_TEMP/push.json"; shot 11-push 3
 
           # A branch manager: one branch only. Then the super stops the account: back to sign-in.
-          xcrun simctl uninstall "$SIM" $A; xcrun simctl install "$SIM" "$APP"
+          xcrun simctl uninstall "$SIM" $A; xcrun simctl install "$SIM" "$APP"; allow "$SIM"
           launch -ppLogin 01099990002 -ppPassword Review-ci-1; shot 12-manager-one-branch 10
           MID=$(curl -fs -b "$RUNNER_TEMP/su.txt" "$BASE/api/super/overview" | python3 -c '
           import json, sys
@@ -130,6 +132,7 @@ jobs:
           xcrun simctl boot "$ipad"; xcrun simctl bootstatus "$ipad" -b
           xcrun simctl status_bar "$ipad" override --time "9:41" --batteryState charged --batteryLevel 100 --wifiBars 3
           xcrun simctl install "$ipad" "$APP"
+          applesimutils --byId "$ipad" --bundle $A --setPermissions notifications=YES > /dev/null
           ishot() { sleep "${2:-8}"; xcrun simctl io "$ipad" screenshot "$SHOTS/ipad-$1.png" > /dev/null; }
           ilaunch() { xcrun simctl terminate "$ipad" $A > /dev/null 2>&1 || true; xcrun simctl launch "$ipad" $A -ppBase "$BASE" "$@" > /dev/null; }
           ilaunch; ishot 01-sign-in 6
