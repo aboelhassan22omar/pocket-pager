@@ -22,6 +22,10 @@ jobs:
     name: iOS - Archive and upload
     runs-on: macos-26
     timeout-minutes: 60
+    # The signing key is released only to a run from main that someone approved (production
+    # environment): a pushed branch cannot read it.
+    if: github.ref == 'refs/heads/main'
+    environment: production
     defaults:
       run:
         working-directory: ios

@@ -10,6 +10,7 @@ import { deviceFromRequest, setStaffSession, verifyStaffSession } from '../sessi
 import { HttpError } from '../errors.js';
 import { randomId } from '../util.js';
 import { DEMO_LOCKED, isDemo } from '../demo.js';
+import { isReviewBranch } from '../review.js';
 import { createRateLimiter } from '../ratelimit.js';
 import { openSse } from '../sse.js';
 import { newStaticKey, QR_MODES, SHOP_ID_RE } from '../store.js';
@@ -19,6 +20,13 @@ import { buildId } from '../build.js';
 const STATUS_TARGETS = ['preparing', 'ready', 'picked', 'cancelled'];
 export const PAUSED_TEXT = 'الفرع مقفول مؤقتًا. اسأل الكاشير';
 export const MAX_STAFF = 30;
+
+/** Whether a cashier of this branch already uses this PIN (the branch PIN must differ from all). */
+export async function staffPinTaken(store, pin) {
+  for (const staff of store.listStaff()) if (await verifyPin(pin, staff.pin_hash)) return true;
+  return false;
+}
+export const PIN_TAKEN_TEXT = 'الرقم السري ده مستخدم لكاشير في الفرع، اختار غيره';
 const HEX_COLOR_RE = /^#[0-9a-f]{6}$/i;
 // g.page/r/…/review, maps.app.goo.gl/…, search.google.com/local/writereview?placeid=…, google.com.eg/…
 const GOOGLE_HOST_RE = /(^|\.)(google\.[a-z]{2,3}(\.[a-z]{2})?|g\.page|goo\.gl)$/i;
@@ -74,6 +82,8 @@ export default async function barRoutes(app, deps) {
 
   // Staff cookie: signed with a key derived for this branch only (sessions.js).
   const announcementsFor = (branchId) => control.announcementsForBranch(branchId);
+  const branchFailLimiter = createRateLimiter({ limit: 100, windowMs: 3600_000 });
+  app.addHook('onClose', async () => branchFailLimiter.close());
   const setSession = (reply, shop, staff = null) => setStaffSession(reply, config, shop, { staff });
 
   function requireBar(req) {
@@ -122,6 +132,13 @@ export default async function barRoutes(app, deps) {
         return { ok: true, staff: staff.name };
       }
     }
+    // Wrong PINs are also counted per branch, from every address together: guessing one of a
+    // branch's PINs from many addresses stops too.
+    const branchWide = branchFailLimiter.take(`fail|${shopId}`);
+    if (!branchWide.ok) {
+      reply.header('retry-after', String(branchWide.retryAfter));
+      throw new HttpError(429, 'محاولات غلط كتير على الفرع ده. استنى شوية وجرّب تاني');
+    }
     throw new HttpError(401, 'الرقم السري غلط');
   });
 
@@ -141,12 +158,13 @@ export default async function barRoutes(app, deps) {
       const isLogo = req.routeOptions.url?.endsWith('/logo');
       // A cashier's own PIN: orders yes; the branch's settings, logo and POS link no.
       const settingsRoute = ['/settings', '/logo', '/pos/rotate', '/qr/rotate-key'].some((p) => req.routeOptions.url?.endsWith(p));
-      if (req.staff && req.method !== 'GET' && settingsRoute) {
+      const posLink = req.routeOptions.url?.endsWith('/pos');
+      if (req.staff && ((req.method !== 'GET' && settingsRoute) || posLink)) {
         throw new HttpError(403, 'الإعدادات بالرقم السري بتاع الفرع بس');
       }
-      // Every visitor shares the demo café: its settings stay as they are.
+      // Every visitor shares the demo café (and App Review the review café): settings stay as they are.
       const locked = ['/settings', '/pos/rotate'].some((path) => req.routeOptions.url?.endsWith(path));
-      if (req.method !== 'GET' && isDemo(req.shop.id) && (isLogo || locked)) {
+      if (req.method !== 'GET' && (isDemo(req.shop.id) || isReviewBranch(req.shop.id)) && (isLogo || locked)) {
         throw new HttpError(403, DEMO_LOCKED);
       }
       if (req.method === 'POST' && !isLogo && !(req.headers['content-type'] ?? '').startsWith('application/json')) {
@@ -193,6 +211,14 @@ export default async function barRoutes(app, deps) {
       // "reload" with a device is for that device (the super's "refresh screen"); without one
       // (the super reset the brand's data) for every screen of the branch.
       const listener = (event, data) => {
+        // Access is checked on every event, not only when the stream opened: a removed cashier,
+        // an unlinked device or a changed PIN stops receiving at once.
+        try {
+          requireBar(req);
+        } catch {
+          sse.close();
+          return;
+        }
         if (event === 'reload') {
           if (!data.deviceId || (appDevice && data.deviceId === appDevice)) sse.send('reload', {});
         } else {
@@ -357,6 +383,7 @@ export default async function barRoutes(app, deps) {
         if (!(await verifyPin(String(body.currentPin ?? ''), shop.pin_hash))) {
           throw new HttpError(403, 'الرقم السري الحالي غلط', { field: 'currentPin' });
         }
+        if (await staffPinTaken(req.ctx.store, body.newPin)) throw new HttpError(409, PIN_TAKEN_TEXT, { field: 'newPin' });
         Object.assign(fields, await pinFields(config.cookieSecret, body.newPin));
       }
       if ('posOnly' in body) fields.pos_only = body.posOnly === true ? 1 : 0;

@@ -356,7 +356,7 @@ export function brandAnalytics(deps, brandId, { from, to, branchId = null, now =
 const csvCell = (v) => {
   const s = v == null ? '' : String(v);
   // Quote when needed; neutralise spreadsheet formulas (CSV injection).
-  const safe = /^[=+\-@]/.test(s) ? `'${s}` : s;
+  const safe = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
   return /[",\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 };
 

@@ -60,8 +60,16 @@ export default async function customerRoutes(app, { config, control, tenants, bu
   // The QR a POS prints on each receipt: /r/<branch>/<static key>/<receipt number>. Opens that
   // receipt's order: the one already open (another phone scanned it), or a new one with the
   // receipt's number.
+  // Receipts are opened one at a time by people, never in bulk.
+  const receiptLimiter = createRateLimiter({ limit: 20 });
+  app.addHook('onClose', async () => receiptLimiter.close());
   app.get('/r/:branch/:key/:receipt', async (req, reply) => {
     const { branch, key, receipt } = req.params;
+    const limit = receiptLimiter.take(`r|${branch}|${req.ip}`);
+    if (!limit.ok) {
+      reply.header('retry-after', String(limit.retryAfter));
+      return reply.code(429).type('text/plain; charset=utf-8').send('محاولات كتير. استنى دقيقة وامسح الكود تاني');
+    }
     const ctx = tenants.get(branch);
     const shop = ctx?.store.getShop();
     if (!shop || !safeEqual(key, shop.static_key) || !PICK_RE.test(receipt)) {
@@ -77,6 +85,10 @@ export default async function customerRoutes(app, { config, control, tenants, bu
   const claimLimiter = createRateLimiter({ limit: config.claimRatePerMin });
   const claimIpLimiter = createRateLimiter({ limit: config.claimIpRatePerMin });
   const deviceLimiter = createRateLimiter(DEVICE_CLAIMS);
+  // The static key is printed on the counter and on receipts: claims made with it (no live nonce)
+  // are capped per address, so nobody can drain a branch's numbers from afar.
+  const staticLimiter = createRateLimiter({ limit: 40, windowMs: 10 * 60_000 });
+  const receiptClaimLimiter = createRateLimiter({ limit: 20 });
   app.addHook('onClose', async () => {
     claimLimiter.close();
     claimIpLimiter.close();
@@ -123,6 +135,12 @@ export default async function customerRoutes(app, { config, control, tenants, bu
       // Paused by its owner: no new numbers until it opens again.
       if (req.ctx.store.getShop().paused) throw new HttpError(409, PAUSED_TEXT, { code: 'paused' });
       const { n, k, pick, canPick, receipt } = req.body ?? {};
+      const guard = receipt != null ? receiptClaimLimiter.take(`rc|${req.ctx.branch.id}|${req.ip}`)
+        : k && !n ? staticLimiter.take(`sk|${req.ctx.branch.id}|${req.ip}`) : { ok: true };
+      if (!guard.ok) {
+        reply.header('retry-after', String(guard.retryAfter));
+        throw new HttpError(429, 'محاولات كتير. استنى شوية وجرّب تاني');
+      }
       if (pick != null && pick !== 'new' && !PICK_RE.test(String(pick))) throw new HttpError(400, 'الرقم ده مش مظبوط', { field: 'pick' });
       if (receipt != null && !PICK_RE.test(String(receipt))) throw new HttpError(400, 'رقم الفاتورة مش مظبوط', { field: 'receipt' });
       // A receipt someone already scanned: this phone follows the same order.
@@ -147,6 +165,8 @@ export default async function customerRoutes(app, { config, control, tenants, bu
       // Several numbers from the POS are waiting: the customer picks the one on their receipt.
       if (claimed.choose) return { choose: claimed.choose };
       const { order, shop } = claimed;
+      // This phone holds the order now: from here it is found by its receipt only, not by number.
+      if (CLIENT_ID_RE.test(clientId ?? '')) req.ctx.store.joinOrder(order, clientId, { share: true });
       const view = service.customerView(req.ctx, order, shop);
       if (!device) return view;
       setDeviceCookie(reply, config, branchId, device.token);
@@ -188,7 +208,7 @@ export default async function customerRoutes(app, { config, control, tenants, bu
       if (!ALARM_SID_RE.test(sid)) throw new HttpError(400, 'stream id');
       if (CLOSED_STATUSES.includes(order.status)) throw new HttpError(410, 'الطلب ده خلص');
       const opened = alarms.open({
-        req, reply, branchId: req.ctx.branch.id, brandId: req.ctx.branch.brand_id, order, sid, ring: req.query.ring === '1',
+        req, reply, branchId: req.ctx.branch.id, brandId: req.ctx.branch.brand_id, order, sid, ring: req.query.ring === '1', ip: req.ip,
       });
       if (!opened) throw new HttpError(429, 'busy');
       return reply;
