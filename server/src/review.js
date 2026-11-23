@@ -16,6 +16,10 @@ const BRANCHES = [
 ];
 const OPEN_NOW = 3;
 
+/** The review brand is public (its password is in the store notes): it is read-only. */
+export const isReviewBrand = (id) => id === REVIEW_BRAND;
+export const isReviewBranch = (id) => typeof id === 'string' && id.startsWith(`${REVIEW_BRAND}-`);
+
 async function ensureAccount(deps, { username, phone, name }, branchId = null) {
   const { control, config } = deps;
   let account = control.ownerInBrand(REVIEW_BRAND, username);

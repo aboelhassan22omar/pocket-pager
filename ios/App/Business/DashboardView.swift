@@ -105,7 +105,13 @@ struct DashboardWeb: UIViewRepresentable {
         let leftDashboard: () -> Void
         weak var web: WKWebView?
         var lastToken = 0
-        private let host = PagerAPI.baseURL.host
+        private let base = PagerAPI.baseURL
+        /// Our site exactly: same scheme, host and port (never «http://» or another port of it).
+        private func isOurs(_ url: URL) -> Bool {
+            url.scheme == base.scheme && url.host == base.host && url.port == base.port
+        }
+        /// Links the dashboard may hand to other apps: the web, WhatsApp, calls, mail, SMS.
+        private static let outsideSchemes: Set<String> = ["https", "http", "whatsapp", "tel", "mailto", "sms"]
 
         init(openOutside: @escaping (URL) -> Void, leftDashboard: @escaping () -> Void) {
             self.openOutside = openOutside
@@ -120,7 +126,7 @@ struct DashboardWeb: UIViewRepresentable {
         /// Our dashboard stays here; the cashier screen, WhatsApp and anything else open on top.
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction) async -> WKNavigationActionPolicy {
             guard let url = action.request.url else { return .cancel }
-            let ours = url.host == host
+            let ours = isOurs(url)
             if ours, url.path.hasPrefix("/brand/") { return .allow }
             if ours, url.path == "/" || url.path == "/login" {
                 leftDashboard()
@@ -130,7 +136,7 @@ struct DashboardWeb: UIViewRepresentable {
             if ours, action.navigationType == .other || action.navigationType == .reload { return .allow }
             if url.scheme == "https" || url.scheme == "http" {
                 if ours { openOutside(url) } else { await UIApplication.shared.open(url) }
-            } else if UIApplication.shared.canOpenURL(url) {
+            } else if let scheme = url.scheme?.lowercased(), Self.outsideSchemes.contains(scheme) {
                 await UIApplication.shared.open(url)
             }
             return .cancel
@@ -140,7 +146,11 @@ struct DashboardWeb: UIViewRepresentable {
         func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                      for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
             if let url = action.request.url {
-                if url.host == host { openOutside(url) } else { UIApplication.shared.open(url) }
+                if isOurs(url) {
+                    openOutside(url)
+                } else if let scheme = url.scheme?.lowercased(), Self.outsideSchemes.contains(scheme) {
+                    UIApplication.shared.open(url)
+                }
             }
             return nil
         }

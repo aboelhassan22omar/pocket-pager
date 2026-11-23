@@ -83,7 +83,7 @@ export function cleanSlug(value, field, { min = 3, max = 24 } = {}) {
 }
 
 /** A 4-digit cashier PIN (the owner can change it later). */
-export const newPin = () => String(crypto.randomInt(0, 10000)).padStart(4, '0');
+export const newPin = (digits = 4) => String(crypto.randomInt(0, 10 ** digits)).padStart(digits, '0');
 
 /** Every owner/manager signed in with these: by phone first, then by username. */
 export function loginCandidates(control, login) {
@@ -221,7 +221,14 @@ export default async function accountRoutes(app, deps) {
     requireJson(req);
     const { login, password } = req.body ?? {};
     const typed = typeof login === 'string' ? login.trim() : '';
-    limited(loginLimiter, `login|${typed.toLowerCase()}|${req.ip}`, reply);
+    // Keyed on the account, not the spelling: «0101 234-5678» and «+20101…» are one phone.
+    let account = typed.toLowerCase();
+    try {
+      account = accountPhone(typed);
+    } catch {
+      // a username
+    }
+    limited(loginLimiter, `login|${account}|${req.ip}`, reply);
     let owner = null;
     for (const o of loginCandidates(control, typed).slice(0, 5)) {
       if (await verifyPin(String(password ?? ''), o.password_hash)) {

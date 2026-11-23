@@ -137,7 +137,7 @@ export function cleanTexts(input) {
   const texts = {};
   if (!input || typeof input !== 'object') return { texts };
   for (const [key, value] of Object.entries(input)) {
-    if (!(key in TEXT_DEFAULTS) || typeof value !== 'string') continue;
+    if (!Object.hasOwn(TEXT_DEFAULTS, key) || typeof value !== 'string') continue;
     const text = value.trim();
     if (!text || text === TEXT_DEFAULTS[key]) continue;
     if (text.length > TEXT_MAX) return { error: `الجملة دي لحد ${TEXT_MAX} حرف`, field: key };

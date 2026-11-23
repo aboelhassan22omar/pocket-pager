@@ -183,7 +183,9 @@ export class BranchStore {
       const fromPos = receipt ? this.#fromReceipt(shop, receipt) : this.#fromPos(shop, pick, canPick);
       if (fromPos?.choose) return fromPos;
       const number = fromPos?.number ?? this.#allocateNumber(shop);
-      const ref = fromPos?.ref ?? null;
+      // Claimed from a receipt: the receipt is its ref, so other phones holding the same receipt
+      // find it (and only by that receipt, never by a guessed number).
+      const ref = fromPos?.ref ?? (receipt ? String(receipt) : null);
       if (shop.pos_token || shop.manual_numbers) this.#markPos(fromPos?.key ?? ref ?? String(number), number);
       const id = randomId(16);
       this.sql.insertOrder.run(id, number, ref, Date.now(), fromPos?.receipt ?? null, 'pickup', null);
@@ -285,8 +287,11 @@ export class BranchStore {
 
   /** The open order a receipt number belongs to (several phones scan one receipt), or null. */
   openOrderByReceipt(receipt) {
+    // By its plain number only while no phone holds it (rung up at the counter, waiting for its
+    // scan): an order a customer already has is reachable by its own receipt only, so a number
+    // guessed with the branch's static key never leads to someone else's order.
     const row = this.db.prepare(`SELECT id FROM orders WHERE status IN ('preparing', 'ready')
-      AND (receipt = ? OR (receipt IS NULL AND (ref = ? OR (ref IS NULL AND CAST(number AS TEXT) = ?))))
+      AND (receipt = ? OR (receipt IS NULL AND (ref = ? OR (ref IS NULL AND viewer IS NULL AND CAST(number AS TEXT) = ?))))
       ORDER BY created_at DESC LIMIT 1`).get(receipt, receipt, receipt);
     return row ? this.getOrder(row.id) : null;
   }

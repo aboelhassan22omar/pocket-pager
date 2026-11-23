@@ -101,8 +101,10 @@ struct AccountAPI {
     /// Our cookies (the owner session) into the web view's store, before the management page loads.
     @MainActor
     static func syncCookies(into store: WKHTTPCookieStore) async {
-        let host = PagerAPI.baseURL.host ?? ""
-        for cookie in HTTPCookieStorage.shared.cookies ?? [] where host.hasSuffix(cookie.domain.trimmingCharacters(in: CharacterSet(charactersIn: "."))) {
+        // Only our own host's cookies (exactly, not any domain it ends with).
+        let host = (PagerAPI.baseURL.host ?? "").lowercased()
+        for cookie in HTTPCookieStorage.shared.cookies ?? []
+        where cookie.domain.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ".")) == host {
             await store.setCookie(cookie)
         }
     }

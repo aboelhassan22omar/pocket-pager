@@ -1,9 +1,10 @@
 name: Google Play app
 
 # Builds Pocket Pager for Google Play (apps/play): a signed .aab, checked by bundletool.
-# On a PR that touches apps/play it proves the build; by hand (Actions > Google Play app > Run)
-# it builds the bundle to upload. Signing: the upload key, from these secrets (without them the
-# bundle is signed with a throwaway key, good for checks only):
+# On a PR that touches apps/play it proves the build with a throwaway key (a PR never sees the
+# upload key). By hand from main (Actions > Google Play app > Run) the release job builds the
+# bundle to upload, signed with the upload key: it runs in the production environment (approval),
+# where these secrets live:
 #   PLAY_UPLOAD_KEYSTORE   the .jks, base64 (base64 -w0 upload.jks)
 #   PLAY_KEY_ALIAS         its alias
 #   PLAY_KEY_PASSWORD      its password (store and key)
@@ -39,20 +40,7 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "build-tools;$BUILD_TOOLS" "platforms;$PLATFORM" > /dev/null
           curl -fsSL -o "$RUNNER_TEMP/bundletool.jar" \
             "https://github.com/google/bundletool/releases/download/$BUNDLETOOL_VERSION/bundletool-all-$BUNDLETOOL_VERSION.jar"
-      - name: Upload key
-        env:
-          PLAY_UPLOAD_KEYSTORE: ${{ secrets.PLAY_UPLOAD_KEYSTORE }}
-        run: |
-          if [ -n "$PLAY_UPLOAD_KEYSTORE" ]; then
-            echo "$PLAY_UPLOAD_KEYSTORE" | base64 -d > "$RUNNER_TEMP/upload.jks"
-            echo "KEYSTORE=$RUNNER_TEMP/upload.jks" >> "$GITHUB_ENV"
-          else
-            echo "::warning::PLAY_UPLOAD_KEYSTORE is not set: the bundle is signed with a throwaway key (not for upload)"
-          fi
-      - name: Build
-        env:
-          KEY_ALIAS: ${{ secrets.PLAY_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.PLAY_KEY_PASSWORD }}
+      - name: Build (throwaway key)
         run: |
           ANDROID_JAR="$ANDROID_HOME/platforms/$PLATFORM/android.jar" \
           BUILD_TOOLS="$ANDROID_HOME/build-tools/$BUILD_TOOLS" \
@@ -85,6 +73,44 @@ jobs:
           path: |
             ${{ runner.temp }}/pocket-pager.aab
             ${{ runner.temp }}/pocket-pager-try.apk
+          if-no-files-found: error
+
+  release:
+    name: Play - the signed .aab to upload
+    # By hand, from main, after approval: only this job can read the upload key.
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    needs: bundle
+    environment: production
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: SDK packages and bundletool
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "build-tools;$BUILD_TOOLS" "platforms;$PLATFORM" > /dev/null
+          curl -fsSL -o "$RUNNER_TEMP/bundletool.jar"             "https://github.com/google/bundletool/releases/download/$BUNDLETOOL_VERSION/bundletool-all-$BUNDLETOOL_VERSION.jar"
+      - name: Upload key
+        env:
+          PLAY_UPLOAD_KEYSTORE: ${{ secrets.PLAY_UPLOAD_KEYSTORE }}
+        run: |
+          if [ -z "$PLAY_UPLOAD_KEYSTORE" ]; then echo "::error::PLAY_UPLOAD_KEYSTORE is not set in the production environment"; exit 1; fi
+          echo "$PLAY_UPLOAD_KEYSTORE" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          echo "KEYSTORE=$RUNNER_TEMP/upload.jks" >> "$GITHUB_ENV"
+      - name: Build (upload key)
+        env:
+          KEY_ALIAS: ${{ secrets.PLAY_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.PLAY_KEY_PASSWORD }}
+        run: |
+          ANDROID_JAR="$ANDROID_HOME/platforms/$PLATFORM/android.jar"           BUILD_TOOLS="$ANDROID_HOME/build-tools/$BUILD_TOOLS"           BUNDLETOOL="$RUNNER_TEMP/bundletool.jar"             bash apps/play/build.sh "$RUNNER_TEMP/pocket-pager.aab"
+          rm -f "$RUNNER_TEMP/upload.jks"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pocket-pager-play-signed
+          path: ${{ runner.temp }}/pocket-pager.aab
           if-no-files-found: error
 
   emulator:

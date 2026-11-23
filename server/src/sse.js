@@ -26,5 +26,9 @@ export function openSse(request, reply) {
     onClose(fn) {
       cleanups.push(fn);
     },
+    /** Ends the stream (its principal lost access); the close handlers then run. */
+    close() {
+      if (!res.writableEnded) res.end();
+    },
   };
 }
