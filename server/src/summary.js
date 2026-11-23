@@ -32,6 +32,11 @@ export function summaryText(report, brand, config) {
  * Sends at most one summary per brand per week, on/after Monday 09:00 local time.
  * Returns the number of emails sent.
  */
+/** Who gets a brand's weekly summary: its owners, never branch managers or stopped accounts. */
+export function summaryRecipients(control, brandId) {
+  return control.ownersOfBrand(brandId).filter((o) => !o.branch_id && !o.disabled_at).map((o) => o.email).filter(Boolean);
+}
+
 export async function runWeeklySummaries(deps, { now = Date.now(), send = sendMail } = {}) {
   const { config, control, log } = deps;
   const smtp = smtpConfig(config);
@@ -42,7 +47,7 @@ export async function runWeeklySummaries(deps, { now = Date.now(), send = sendMa
   let sent = 0;
   for (const brand of control.listBrands()) {
     if (brand.last_summary_week === week || brand.deleted_at) continue;
-    const to = control.ownersOfBrand(brand.id).map((o) => o.email).filter(Boolean);
+    const to = summaryRecipients(control, brand.id);
     if (to.length) {
       const report = brandAnalytics(deps, brand.id, {
         from: dayIn(config.tz, new Date(now - 7 * DAY)),

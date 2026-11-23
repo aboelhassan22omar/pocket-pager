@@ -69,18 +69,18 @@ jobs:
           A=cc.aurexis.pager
           shot() { sleep "${2:-6}"; xcrun simctl io "$SIM" screenshot "$SHOTS/$1.png" > /dev/null; echo "shot $1"; }
           launch() { xcrun simctl terminate "$SIM" $A > /dev/null 2>&1 || true; xcrun simctl launch "$SIM" $A -ppBase "$BASE" "$@" > /dev/null; }
-          owner_api() { curl -fs -b "$RUNNER_TEMP/owner.txt" -c "$RUNNER_TEMP/owner.txt" -H 'content-type: application/json' "$@"; }
           xcrun simctl status_bar "$SIM" override --time "9:41" --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3
           xcrun simctl install "$SIM" "$APP"
           brew tap wix/brew > /dev/null && brew trust wix/brew > /dev/null && brew install applesimutils > /dev/null
           allow() { applesimutils --byId "$1" --bundle $A --setPermissions notifications=YES > /dev/null; }
           allow "$SIM"
 
-          # The owner on the server side too (to make changes the app should show live).
-          curl -fs -c "$RUNNER_TEMP/owner.txt" -H 'content-type: application/json' \
-            -d '{"login":"01099990001","password":"Review-ci-1"}' "$BASE/api/login" > /dev/null
-          owner_api -d '{"paused":true}' "$BASE/api/brand/review-cafe/branches/review-cafe-zamalek/settings" > /dev/null
-          owner_api -d '{"paused":false}' "$BASE/api/brand/review-cafe/branches/review-cafe-zamalek/settings" > /dev/null
+          # Alerts to show: Aurexis stops a branch and brings it back (the review café is read-only).
+          curl -fs -b "$RUNNER_TEMP/su.txt" -H 'content-type: application/json' -d '{}' \
+            "$BASE/api/super/branches/review-cafe-zamalek/trash" > /dev/null
+          sleep 5
+          curl -fs -b "$RUNNER_TEMP/su.txt" -H 'content-type: application/json' -d '{"trialDays":30}' \
+            "$BASE/api/super/branches/review-cafe-zamalek/restore" > /dev/null
 
           launch; shot 01-sign-in
           launch -ppLogin 01099990001 -ppPassword Review-ci-1; shot 02-branches 10

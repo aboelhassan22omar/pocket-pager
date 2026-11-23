@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { passwordFields, pinFields, PIN_RE, verifyPin } from '../auth.js';
 import fs from 'node:fs';
 import { superOverview } from '../aggregate.js';
@@ -18,7 +19,7 @@ import { isTimeZone, randomId } from '../util.js';
 import { barShop, publicOrder } from '../views.js';
 import { brandChannel } from '../bus.js';
 import { accountPhone, cleanPersonName } from './account.js';
-import { sniffImage } from './bar.js';
+import { PIN_TAKEN_TEXT, sniffImage, staffPinTaken } from './bar.js';
 
 export const USERNAME_RE = /^[A-Za-z0-9._-]{3,32}$/;
 const bad = (field, message) => new HttpError(400, message, { field });
@@ -125,7 +126,7 @@ export default async function superRoutes(app, deps) {
       const brand = provisionBrand(deps, { id: String(body.brandId ?? '').trim().toLowerCase(), name: body.brandName });
       const branchSlug = String(body.branchSlug ?? '').trim().toLowerCase();
       const branchId = branchSlug ? `${brand.id}-${branchSlug}` : brand.id;
-      const pin = /^\d{4,8}$/.test(String(body.pin ?? '')) ? String(body.pin) : String(Math.floor(1000 + Math.random() * 9000));
+      const pin = /^\d{4,8}$/.test(String(body.pin ?? '')) ? String(body.pin) : String(crypto.randomInt(100000, 1000000));
       let shop;
       try {
         shop = await provisionBranch(deps, { brandId: brand.id, id: branchId, name: body.branchName || 'الفرع الرئيسي', pin });
@@ -436,6 +437,7 @@ export default async function superRoutes(app, deps) {
       const ctx = branchCtx(req);
       const pin = req.body?.pin;
       if (typeof pin !== 'string' || !PIN_RE.test(pin)) throw bad('pin', 'الرقم السري لازم يكون من 4 لـ 8 أرقام');
+      if (await staffPinTaken(ctx.store, pin)) throw new HttpError(409, PIN_TAKEN_TEXT, { field: 'pin' });
       ctx.store.updateShop(await pinFields(config.cookieSecret, pin));
       audit(req, 'branch.pin_reset', req.audit);
       return { ok: true };

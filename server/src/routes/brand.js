@@ -27,7 +27,8 @@ import {
   accountPhone, checkNewPassword, cleanPersonName, cleanSlug, newPin, phoneTaken,
 } from './account.js';
 import { parsePlaceId } from '../upgrades.js';
-import { MAX_STAFF, parseGoogleReviewUrl, sniffImage } from './bar.js';
+import { MAX_STAFF, parseGoogleReviewUrl, PIN_TAKEN_TEXT, sniffImage, staffPinTaken } from './bar.js';
+import { isReviewBrand } from '../review.js';
 import { cleanBranchName } from './super.js';
 
 const PROMO_TEXT_MAX = 120;
@@ -125,6 +126,7 @@ export default async function brandRoutes(app, deps) {
     }
     if (!owner) throw new HttpError(401, 'اسم المستخدم أو كلمة السر غلط');
     if (control.getBrand(owner.brand_id)?.deleted_at) throw new HttpError(403, 'الحساب ده متوقف. كلّم Aurexis');
+    if (control.getOwner(owner.id)?.disabled_at) throw new HttpError(403, 'الحساب ده متوقف. كلّم Aurexis');
     control.markOwnerLogin(owner.id);
     setOwnerSession(reply, config, owner);
     control.audit({ actor: `owner:${owner.id}`, action: 'owner.login', brandId: owner.brand_id, ip: req.ip });
@@ -161,6 +163,11 @@ export default async function brandRoutes(app, deps) {
       const stopped = brandStopReason(mine);
       if (stopped && !control.getBrand(req.params.brand)?.self_serve) throw stoppedError(stopped);
       if (req.method !== 'GET' && isDemo(req.params.brand)) throw new HttpError(403, DEMO_LOCKED);
+      // The App Review account's password is public: it can look at everything and register its
+      // phone for alerts, nothing else.
+      if (req.method !== 'GET' && isReviewBrand(req.params.brand) && !req.url.split('?')[0].includes('/push-devices')) {
+        throw new HttpError(403, DEMO_LOCKED);
+      }
       const url = req.url.split('?')[0];
       requireJson(req, url.endsWith('/promo-image') ? IMAGE_TYPES : url.endsWith('/ring-file') ? AUDIO_TYPES : []);
     });
@@ -431,6 +438,7 @@ export default async function brandRoutes(app, deps) {
       const ctx = ownBranch(req);
       const pin = typeof req.body?.pin === 'string' ? req.body.pin.trim() : '';
       if (!PIN_RE.test(pin)) throw new HttpError(400, 'الرقم السري من 4 لـ 8 أرقام', { field: 'pin' });
+      if (await staffPinTaken(ctx.store, pin)) throw new HttpError(409, PIN_TAKEN_TEXT, { field: 'pin' });
       ctx.store.updateShop(await pinFields(config.cookieSecret, pin));
       control.audit({ actor: `owner:${req.owner.id}`, action: 'branch.pin_reset', brandId: req.params.brand, branchId: ctx.branch.id, ip: req.ip });
       return { ok: true, pin };
@@ -573,9 +581,19 @@ export default async function brandRoutes(app, deps) {
         }, 400);
       };
       const listeners = [];
+      // Access is checked on every event: a deleted or signed-out manager stops receiving at once.
       const listen = (channel, fn) => {
-        bus.on(channel, fn);
-        listeners.push([channel, fn]);
+        const guarded = (event, data) => {
+          try {
+            requireOwner(req, deps, brandId);
+          } catch {
+            sse.close();
+            return;
+          }
+          fn(event, data);
+        };
+        bus.on(channel, guarded);
+        listeners.push([channel, guarded]);
       };
       for (const br of mine()) listen(channels(br.id).bar, changed);
       listen(brandChannel(brandId), (event, data) => {
@@ -605,7 +623,8 @@ export default async function brandRoutes(app, deps) {
 
     b.post('/push-devices/delete', async (req) => {
       const token = typeof req.body?.token === 'string' ? req.body.token : '';
-      if (token) control.dropPushDevice(token);
+      // Only this account's own phone.
+      if (token) control.dropPushDevice(token, req.owner.id);
       return { ok: true };
     });
 
@@ -650,7 +669,7 @@ export default async function brandRoutes(app, deps) {
     b.get('/branches/:branch/staff', async (req) => ({ staff: ownBranch(req).store.listStaff().map(staffView) }));
 
     async function staffPin(ctx, typed, exceptId = null) {
-      const pin = typed ? String(typed).trim() : newPin();
+      const pin = typed ? String(typed).trim() : newPin(6);
       if (!PIN_RE.test(pin)) throw new HttpError(400, 'الرقم السري من 4 لـ 8 أرقام', { field: 'pin' });
       // Two people with one PIN would sign in as each other (or as the branch).
       const taken = [ctx.store.getShop().pin_hash, ...ctx.store.listStaff().filter((s) => s.id !== exceptId).map((s) => s.pin_hash)];

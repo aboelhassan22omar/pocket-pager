@@ -44,6 +44,9 @@ const RINGS = new Set(['ready', 'out_for_delivery']);
 const CUSTOM_MAX_S = 6;
 const MAX_PER_ORDER = 12;
 const MAX_STREAMS = 3000;
+// One address (a café's Wi-Fi holds many phones) and one branch get a share, never everything.
+const MAX_PER_IP = Number(process.env.ALARM_MAX_PER_IP ?? 100);
+const MAX_PER_BRANCH = Number(process.env.ALARM_MAX_PER_BRANCH ?? 600);
 export const ALARM_SID_RE = /^[A-Za-z0-9_-]{8,40}$/;
 
 const MPEG2_L3_KBPS = [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160];
@@ -269,9 +272,13 @@ export function createAlarms({ config, control, bus, log }) {
     },
 
     /** Starts a phone's stream on the hijacked reply. ring: the order rings (ready, or a delivery that left) and isn't acked there. */
-    open({ req, reply, branchId, brandId, order, sid, ring }) {
-      const mine = [...streams].filter((s) => s.orderId === order.id);
+    open({ req, reply, branchId, brandId, order, sid, ring, ip = null }) {
+      const all = [...streams];
+      const mine = all.filter((s) => s.orderId === order.id);
       if (mine.length >= MAX_PER_ORDER || streams.size >= MAX_STREAMS) return false;
+      const reconnect = mine.some((s) => s.sid === sid);
+      if (!reconnect && ip && all.filter((s) => s.ip === ip).length >= MAX_PER_IP) return false;
+      if (!reconnect && all.filter((s) => s.branchId === branchId).length >= MAX_PER_BRANCH) return false;
       // The same phone reconnecting: its old stream goes.
       for (const s of mine) if (s.sid === sid) close(s);
       reply.hijack();
@@ -284,6 +291,7 @@ export function createAlarms({ config, control, bus, log }) {
         'accept-ranges': 'none',
       });
       const s = {
+        ip,
         sid, res, branchId, brandId, orderId: order.id, status: order.status,
         start: Date.now(), sent: 0, queue: [], ringing: false, ringUntil: 0,
         lead: ring && RINGS.has(order.status) ? RING_LEAD_FRAMES : LEAD_FRAMES,

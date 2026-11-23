@@ -559,6 +559,8 @@ export class ControlStore {
 
   setOwnerDisabled(id, disabled, at = Date.now()) {
     this.db.prepare('UPDATE owners SET disabled_at = ? WHERE id = ?').run(disabled ? at : null, id);
+    // Stopping also ends every session for good: turning the account back on needs a new sign-in.
+    if (disabled) this.db.prepare('UPDATE owners SET pw_version = pw_version + 1 WHERE id = ?').run(id);
     if (disabled) this.db.prepare('DELETE FROM push_devices WHERE owner_id = ?').run(id);
     return this.getOwner(id);
   }
@@ -602,8 +604,10 @@ export class ControlStore {
     return this.db.prepare('SELECT * FROM push_devices WHERE brand_id = ?').all(brandId);
   }
 
-  dropPushDevice(token) {
-    this.db.prepare('DELETE FROM push_devices WHERE token = ?').run(token);
+  /** With `ownerId`, only that account's own registration of this phone. */
+  dropPushDevice(token, ownerId = null) {
+    if (ownerId == null) this.db.prepare('DELETE FROM push_devices WHERE token = ?').run(token);
+    else this.db.prepare('DELETE FROM push_devices WHERE token = ? AND owner_id = ?').run(token, ownerId);
   }
 
   // ---- the owner's messages to the cashier screens ----
@@ -690,6 +694,8 @@ export class ControlStore {
   /** New password; bumping pw_version signs every existing owner session out. */
   resetOwnerPassword(id, { passwordHash, passwordSealed = null }) {
     this.sql.resetOwner.run(passwordHash, passwordSealed, id);
+    // Signed out everywhere includes the phones' alerts.
+    this.db.prepare('DELETE FROM push_devices WHERE owner_id = ?').run(id);
     return this.getOwner(id);
   }
 
