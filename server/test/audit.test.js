@@ -150,20 +150,26 @@ describe('security audit regressions: logins, limits, review account', () => {
     const ip = '10.77.0.3';
     const ids = [];
     for (let i = 0; i < 4; i++) {
-      ids.push((await client(server.url).post('/api/b/audc-one/claim', { k }, { ip: `10.77.1.${i}`, headers: { 'x-client-id': `alarm-${i}-xxxxxxxxxxxxxxxxxx` } })).data.id);
+      const res = await client(server.url).post('/api/b/audc-one/claim', { k }, { ip: `10.77.1.${i}`, headers: { 'x-client-id': `alarm-${i}-xxxxxxxxxxxxxxxxxx` } });
+      assert.equal(res.status, 200, `claim ${i}: ${res.status} ${JSON.stringify(res.data)}`);
+      ids.push(res.data.id);
     }
     const ctrls = [];
     const statuses = [];
+    // Held on purpose: an unread response that gets garbage-collected closes its stream.
+    const held = [];
     for (const id of ids) {
       for (let s = 0; s < 12; s++) {
         const ctrl = new AbortController();
         ctrls.push(ctrl);
         const res = await fetch(`${server.url}/api/b/audc-one/orders/${id}/alarm.mp3?s=sid${s}xxxxxxxx`, { signal: ctrl.signal, headers: { 'x-forwarded-for': ip } });
         statuses.push(res.status);
+        held.push(res);
       }
     }
     for (const c of ctrls) c.abort();
-    assert.ok(statuses.includes(429), 'one address held 48 streams');
+    held.length = 0;
+    assert.ok(statuses.includes(429), `one address held 48 streams: ${[...new Set(statuses)]}`);
   });
 
   test('the public review account is read-only: it cannot add managers or change the brand', async () => {

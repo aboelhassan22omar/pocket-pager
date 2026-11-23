@@ -9,7 +9,6 @@ mkdir -p "$SHOTS"
 
 shot() { sleep "${2:-6}"; adb exec-out screencap -p > "$SHOTS/$1.png"; echo "shot $1"; }
 start() { adb shell am force-stop $P; adb shell am start -n $P/.MainActivity "$@" > /dev/null; }
-owner() { curl -fs -b "$WORK/owner.txt" -c "$WORK/owner.txt" -H 'content-type: application/json' "$@"; }
 
 adb reverse tcp:3000 tcp:3000
 adb install -r "$APK" > /dev/null
@@ -40,14 +39,14 @@ for i in 1 2; do
 done
 shot 10-live-after-two-new-orders 12
 
-# A notification: the owner pauses a branch on the website; the app shows it as an Android notification.
-curl -fs -c "$WORK/owner.txt" -H 'content-type: application/json' -d '{"login":"01099990001","password":"Review-ci-1"}' "$BASE/api/login" > /dev/null
-owner -d '{"paused":true}' "$BASE/api/brand/review-cafe/branches/review-cafe-zamalek/settings" > /dev/null
+# A notification: Aurexis stops a branch (the review café itself is read-only); the app shows
+# it as an Android notification. Then the branch comes back.
+curl -fs -b "$WORK/su.txt" -H 'content-type: application/json' -d '{}' "$BASE/api/super/branches/review-cafe-zamalek/trash" > /dev/null
 sleep 14
 adb shell cmd statusbar expand-notifications
 shot 11-notification 3
 adb shell cmd statusbar collapse
-owner -d '{"paused":false}' "$BASE/api/brand/review-cafe/branches/review-cafe-zamalek/settings" > /dev/null
+curl -fs -b "$WORK/su.txt" -H 'content-type: application/json' -d '{"trialDays":30}' "$BASE/api/super/branches/review-cafe-zamalek/restore" > /dev/null
 
 # A branch manager: one branch only. Then the super stops the account: back to sign-in.
 adb shell pm clear $P > /dev/null
